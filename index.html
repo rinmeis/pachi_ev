@@ -211,8 +211,8 @@ details .inner{margin-top:10px;}
     <div class="note">
       「ボーダー（持ち玉）」は出玉で回し続けられる前提の損益分岐点。「ボーダー（現金）」は全て現金で回した場合。
       実際は両者の間に来ます（非等価ほど差が開きます）。<br>
-      理論値は<b>時間無制限</b>の長期期待値です。遊技時間を区切ると、RUSH/LTの途中で打ち切って残りの出玉を失うぶん、
-      下の試行結果は理論値より悪く出ます（詳細の「連チャン途中で打ち切り」を参照）。
+      理論値は<b>資金・時間とも無制限</b>の長期期待値です。予算が有限なぶん、下の試行結果は理論値より下に出ます
+      （予算を増やすほど理論値に近づきます）。
     </div>
   </div>
 
@@ -312,9 +312,13 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.9.0";
+const VERSION = "ver.1.9.1";
 
 const CHANGELOG = [
+  { v:"ver.1.9.1", date:"2026-07-28", items:[
+    "修正：理論値カードの説明が ver.1.6.0 のままで、ver.1.7.0 で廃止した「RUSH/LT途中の打ち切り」と削除済みの項目名を指していた",
+    "詳細の「打ち切りロス」を「実測と理論の差」に改称（打ち切りは ver.1.7.0 で解消済みのため）"
+  ]},
   { v:"ver.1.9.0", date:"2026-07-28", items:[
     "収支推移グラフの横軸を総回転数から通常時回転数のみに変更（電サポ中の回転は数えない）",
     "大当たりごとに記録点を打つよう変更し、連チャンの出玉が縦の立ち上がりとして見えるように"
@@ -947,8 +951,8 @@ function run(){
   dt += `<tr><td>予算切れで終了</td><td>${num((1-sTimeUp/cfg.trials)*100,1)}%</td></tr>`;
   dt += `<tr><td>連チャン消化で時間超過</td><td>${num(nOver/cfg.trials*100,1)}%（平均+${num(sOver/cfg.trials,2)}時間）</td></tr>`;
   dt += `<tr><td>初当たり1回あたり出玉（実測）</td><td>${num(realG,0)}発</td></tr>`;
-  dt += `<tr><td>同（理論・時間無制限）</td><td>${num(theory.G,0)}発</td></tr>`;
-  dt += `<tr><td>打ち切りロス</td><td>${num(lossG,0)}発</td></tr>`;
+  dt += `<tr><td>同（理論値）</td><td>${num(theory.G,0)}発</td></tr>`;
+  dt += `<tr><td>実測と理論の差</td><td>${num(lossG,0)}発</td></tr>`;
   dt += `<tr><td>最大連チャン出玉（全試行中）</td><td>${num(maxChainAll,0)}発</td></tr>`;
   dt += `<tr><td>出玉上限に到達</td><td>${mc.ballCap ? `${num(sCapHits)}回（上限${num(mc.ballCap)}発）` : "上限なし"}</td></tr>`;
   Object.entries(sEnters).forEach(([k,v])=>{
