@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#12151c">
+<title>パチンコ期待値シミュレーター</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#12151c; --panel:#1a1f2b; --panel2:#222938; --line:#2e364a;
+  --fg:#e8ecf4; --sub:#98a3ba; --accent:#4da3ff; --plus:#37d67a; --minus:#ff5c72;
+  --r:12px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--bg); color:var(--fg);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+  font-size:15px; line-height:1.6;
+  padding:0 12px calc(32px + env(safe-area-inset-bottom));
+  padding-left:calc(12px + env(safe-area-inset-left));
+  padding-right:calc(12px + env(safe-area-inset-right));
+  -webkit-text-size-adjust:100%;
+}
+header{
+  padding:calc(16px + env(safe-area-inset-top)) 0 12px;
+  text-align:center;
+}
+header h1{font-size:17px;margin:0;letter-spacing:.02em;}
+header p{font-size:12px;color:var(--sub);margin:4px 0 0;}
+.card{
+  background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--r); padding:14px; margin-bottom:12px;
+}
+.card h2{
+  font-size:13px; margin:0 0 10px; color:var(--sub);
+  font-weight:600; letter-spacing:.08em;
+}
+label{display:block;font-size:12px;color:var(--sub);margin-bottom:4px;}
+input,select{
+  width:100%; background:var(--panel2); color:var(--fg);
+  border:1px solid var(--line); border-radius:8px;
+  padding:10px 12px; font-size:16px; /* iOSズーム防止のため16px */
+  font-family:inherit;
+  -webkit-appearance:none; appearance:none;
+}
+select{
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'><path d='M1 1l5 5 5-5' stroke='%2398a3ba' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>");
+  background-repeat:no-repeat; background-position:right 12px center; background-size:12px;
+  padding-right:34px;
+}
+input:focus,select:focus{outline:none;border-color:var(--accent);}
+.row{display:flex;gap:10px;}
+.row>div{flex:1;min-width:0;}
+.field{margin-bottom:12px;}
+.field:last-child{margin-bottom:0;}
+.pair{display:flex;align-items:center;gap:8px;}
+.pair span{font-size:13px;color:var(--sub);white-space:nowrap;}
+button.go{
+  width:100%; background:var(--accent); color:#08121f; border:none;
+  border-radius:10px; padding:14px; font-size:16px; font-weight:700;
+  font-family:inherit; cursor:pointer;
+}
+button.go:active{opacity:.75;}
+button.go:disabled{opacity:.5;}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.kpi{background:var(--panel2);border-radius:10px;padding:10px 12px;}
+.kpi .k{font-size:11px;color:var(--sub);}
+.kpi .v{font-size:19px;font-weight:700;letter-spacing:-.01em;margin-top:2px;}
+.kpi .v small{font-size:12px;font-weight:500;color:var(--sub);margin-left:2px;}
+.kpi.wide{grid-column:1 / -1;}
+.plus{color:var(--plus);} .minus{color:var(--minus);}
+.chartbox{position:relative;height:260px;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;}
+th{color:var(--sub);font-weight:600;}
+th:first-child,td:first-child{text-align:left;}
+details summary{
+  font-size:13px;color:var(--sub);cursor:pointer;list-style:none;
+  padding:2px 0;
+}
+details summary::-webkit-details-marker{display:none;}
+details summary::before{content:"▸ ";}
+details[open] summary::before{content:"▾ ";}
+details .inner{margin-top:10px;}
+.note{font-size:11px;color:var(--sub);line-height:1.7;margin-top:10px;}
+.ver{
+  display:inline-block; margin-left:4px; padding:1px 7px;
+  background:var(--panel2); border:1px solid var(--line); border-radius:999px;
+  font-size:11px; color:var(--sub); letter-spacing:.02em; vertical-align:1px;
+}
+.log{margin:0;padding:0;list-style:none;}
+.log li{margin-bottom:12px;}
+.log li:last-child{margin-bottom:0;}
+.log .lv{font-size:12px;font-weight:700;color:var(--fg);}
+.log .ld{font-size:11px;color:var(--sub);margin-left:6px;font-weight:400;}
+.log ul{margin:4px 0 0;padding-left:16px;font-size:11px;color:var(--sub);line-height:1.8;}
+.hidden{display:none;}
+.spec-note{font-size:12px;color:var(--sub);margin:-4px 0 10px;}
+.mode-h{font-size:12px;font-weight:700;margin:12px 0 4px;color:var(--fg);}
+.mode-h:first-child{margin-top:0;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>パチンコ期待値シミュレーター</h1>
+  <p>理論期待値 ＋ モンテカルロ試行 <span id="verBadge" class="ver"></span></p>
+</header>
+
+<!-- ===== 機種選択 ===== -->
+<div class="card">
+  <h2>機種</h2>
+  <div class="field">
+    <select id="machine"></select>
+  </div>
+  <div class="spec-note" id="specNote"></div>
+  <details>
+    <summary>スペック詳細</summary>
+    <div class="inner" id="specBody"></div>
+  </details>
+</div>
+
+<!-- ===== 入力 ===== -->
+<div class="card">
+  <h2>遊技条件</h2>
+
+  <div class="field">
+    <label>貸玉レート</label>
+    <select id="ratePreset">
+      <option value="4">4円パチンコ（4パチ）</option>
+      <option value="1">1円パチンコ（1パチ）</option>
+      <option value="custom">カスタム</option>
+    </select>
+    <div class="pair" style="margin-top:8px;">
+      <input id="lendYen" type="number" inputmode="decimal" value="500" step="100">
+      <span>円で</span>
+      <input id="lendBalls" type="number" inputmode="decimal" value="125" step="1">
+      <span>発</span>
+    </div>
+    <div class="note" id="lendNote"></div>
+  </div>
+
+  <div class="field">
+    <label>交換率</label>
+    <select id="exPreset"></select>
+    <div class="field hidden" id="exCustomWrap" style="margin-top:8px;">
+      <input id="exCustom" type="number" inputmode="decimal" value="3.571" step="0.001">
+    </div>
+    <div class="note" id="exNote"></div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label id="spinsLabel">1kあたり回転数</label>
+      <input id="spins1k" type="number" inputmode="decimal" value="16" step="0.1">
+    </div>
+    <div class="field">
+      <label>投資予算（円）</label>
+      <input id="budget" type="number" inputmode="numeric" value="30000" step="1000">
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>遊技時間（時間）</label>
+      <input id="hours" type="number" inputmode="decimal" value="8" step="0.5">
+    </div>
+    <div class="field">
+      <label>試行回数</label>
+      <select id="trials">
+      <option value="200">200回（速い）</option>
+      <option value="500" selected>500回</option>
+      <option value="2000">2000回（精度重視・やや重い）</option>
+      </select>
+    </div>
+  </div>
+  <div class="note" id="hoursNote"></div>
+</div>
+
+<button class="go" id="run">計算する</button>
+
+<!-- ===== 結果 ===== -->
+<div id="result" class="hidden">
+
+  <div class="card" style="margin-top:12px;">
+    <h2>理論値</h2>
+    <div class="kpis">
+      <div class="kpi wide">
+        <div class="k">通常時1,000回転あたりの期待収支</div>
+        <div class="v" id="kEv">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">ボーダー（持ち玉）</div>
+        <div class="v" id="kBorder">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">ボーダー（現金）</div>
+        <div class="v" id="kBorderCash">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">初当たり期待出玉</div>
+        <div class="v" id="kG">-<small>発</small></div>
+      </div>
+      <div class="kpi">
+        <div class="k">1回転の必要玉</div>
+        <div class="v" id="kC">-<small>玉</small></div>
+      </div>
+    </div>
+    <div class="note">
+      「ボーダー（持ち玉）」は出玉で回し続けられる前提の損益分岐点。「ボーダー（現金）」は全て現金で回した場合。
+      実際は両者の間に来ます（非等価ほど差が開きます）。<br>
+      理論値は<b>時間無制限</b>の長期期待値です。遊技時間を区切ると、RUSH/LTの途中で打ち切って残りの出玉を失うぶん、
+      下の試行結果は理論値より悪く出ます（詳細の「連チャン途中で打ち切り」を参照）。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>試行結果</h2>
+    <div class="kpis">
+      <div class="kpi wide">
+        <div class="k">平均収支</div>
+        <div class="v" id="tMean">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">中央値</div>
+        <div class="v" id="tMedian">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">勝率</div>
+        <div class="v" id="tWin">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">下位5%</div>
+        <div class="v" id="tP5">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">上位5%</div>
+        <div class="v" id="tP95">-</div>
+      </div>
+    </div>
+    <div class="note" id="gapNote"></div>
+    <details style="margin-top:12px;">
+      <summary>詳細（平均回転数・初当たり回数など）</summary>
+      <div class="inner"><table id="tDetail"></table></div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>収支の分布（ヒストグラム）</h2>
+    <div class="chartbox"><canvas id="chartHist"></canvas></div>
+    <div class="note" id="histNote"></div>
+  </div>
+
+  <div class="card">
+    <h2>収支推移（試行30本）</h2>
+    <div class="chartbox"><canvas id="chartRun"></canvas></div>
+    <div class="note">
+      横軸は<b>通常時（左打ち）の回転数のみ</b>で、電サポ中の回転は数えません。
+      連チャン中は横軸が進まないため、出玉は縦の立ち上がりとして描かれます。
+      縦軸は現時点で換金した場合の収支です。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>回転数別の期待収支</h2>
+    <div class="chartbox"><canvas id="chartCurve"></canvas></div>
+    <div class="note">
+      青線が理論値、縦の破線が現在の設定、丸印が試行の平均（1,000回転換算）。
+      0と交わる点がボーダーラインです。<br>
+      青線は<b>時間無制限</b>の長期期待値なので、遊技時間を区切ると丸印は青線より下に出ます。
+      その差の内訳は上の「試行結果」に表示しています。遊技時間に <b>0</b> を入れると時間無制限で試行でき、
+      丸印が青線に重なることを確認できます。
+    </div>
+  </div>
+
+</div>
+
+<div class="card">
+  <details>
+    <summary>計算の前提</summary>
+    <div class="inner note" style="margin-top:0;">
+      ・電サポ（右打ち）中は玉が減らないものとして扱います。<br>
+      ・大当たり出玉には機種ごとの出玉増減率を掛けています（Re:ゼロ2は −5%＝×0.95）。<br>
+      ・出玉上限は「到達後は次の当たりが付かない」ルールとして扱います。上限に達した大当たり自体の出玉は満額もらえるので、累計は上限を大当たり1回分ぶん超えることがあります。時間切れ後に連チャンを消化する場合も同じです。<br>
+      ・理論値の現金比率は「1サイクルで必要な玉のうち前回出玉で足りない分を現金購入」という近似です。これは資金が無制限にある前提なので、予算が有限な試行の平均は理論値より下に出ます（予算を増やすと一致していきます）。<br>
+      ・出玉上限がある機種では、理論値より試行結果を信頼してください。<br>
+      ・玉は必要量だけ都度購入する扱い（500円単位などの丸めなし）です。<br>
+      ・試行は「予算切れ」か「遊技時間切れ」の早いほうで終了し、そのとき残っている玉を換金します。時間制限を入れないと、勝っていても持ち玉がなくなるまで打ち続けることになり、収支がほぼ常に −予算 になってしまうためです。<br>
+      ・時間切れの判定は通常時（左打ち）でのみ行います。RUSH／LT中に時間が来ても、通常に戻るまで連チャンを最後まで消化するため、設定した遊技時間を超えることがあります。<br>
+      ・遊技時間の消化速度は、通常時1回転14.4秒（250回転/時）、電サポ中1回転7.2秒（500回転/時）、大当たり消化は1発0.06秒（1,500発で約90秒）としています。
+    </div>
+  </details>
+</div>
+
+<div class="card">
+  <details>
+    <summary>更新履歴</summary>
+    <div class="inner"><ul class="log" id="changelog"></ul></div>
+  </details>
+</div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   バージョン
+   ---------------------------------------------------------
+   ver.X.Y.Z
+     バグ修正            → Z を +1        （1.1.0 → 1.1.1）
+     機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
+   更新時は VERSION と CHANGELOG の両方を必ず更新する。
+   ========================================================= */
+const VERSION = "ver.1.9.0";
+
+const CHANGELOG = [
+  { v:"ver.1.9.0", date:"2026-07-28", items:[
+    "収支推移グラフの横軸を総回転数から通常時回転数のみに変更（電サポ中の回転は数えない）",
+    "大当たりごとに記録点を打つよう変更し、連チャンの出玉が縦の立ち上がりとして見えるように"
+  ]},
+  { v:"ver.1.8.1", date:"2026-07-28", items:[
+    "修正：ver.1.8.0で入れた「出玉上限で大当たりを途中打ち止め」を撤回。上限は「到達後は次の当たりが付かない」ルールが正しく、その大当たりの出玉は満額もらえる"
+  ]},
+  { v:"ver.1.8.0", date:"2026-07-28", items:[
+    "詳細に「最大連チャン出玉」と「出玉上限に到達した回数」を追加"
+  ]},
+  { v:"ver.1.7.0", date:"2026-07-28", items:[
+    "遊技時間が終了してもRUSH／LT中なら通常に戻るまで打ち切らないよう変更",
+    "これにより連チャン途中の打ち切りロスが解消し、実測出玉が理論値とほぼ一致",
+    "詳細の「連チャン途中で打ち切り」を「連チャン消化で時間超過」に置き換え"
+  ]},
+  { v:"ver.1.6.0", date:"2026-07-28", items:[
+    "理論値と試行値の差の内訳を表示（①遊技時間による打ち切りロス ②予算が有限であること）",
+    "詳細に初当たり1回あたりの実測出玉・理論出玉・打ち切りロスを追加",
+    "グラフの凡例を「理論値(時間無制限)」に変更し、比較対象が違うことを明示",
+    "遊技時間に0を入れると時間無制限で試行できるよう変更（理論値の検証用）"
+  ]},
+  { v:"ver.1.5.0", date:"2026-07-28", items:[
+    "交換率の既定値に「名目レート」を導入（4パチ＝4円/玉、1パチ＝1円/玉）",
+    "貸玉が割高な設定（例：500円で118発＝4.24円/玉）でも既定の交換率が4円/玉になるよう修正",
+    "試行結果の分布をヒストグラムで表示する機能を追加"
+  ]},
+  { v:"ver.1.4.0", date:"2026-07-28", items:[
+    "1パチのとき回転数とボーダーを0.2k（200円）あたりで扱うよう変更（4パチは従来どおり1k）",
+    "回転数の入力ラベル・ボーダー表示・グラフ横軸を基準金額に合わせて自動で切替",
+    "基準金額や貸玉レートを変えたとき、1回転あたりの玉数を保つよう回転数を自動換算",
+    "試行結果の詳細に「回転数の基準」を追加"
+  ]},
+  { v:"ver.1.3.0", date:"2026-07-28", items:[
+    "貸玉レートを選び直したとき、交換率を必ず等価に戻すよう変更（4パチ＝4円/玉、1パチ＝1円/玉）",
+    "実際に適用される交換率を交換率欄の下に常時表示",
+    "試行結果の詳細に貸玉レートと交換率を追加",
+    "交換率が貸玉レートを超えたときに警告を表示",
+    "修正：交換率が「直接入力」のとき、貸玉レートを変えると入力値が黙って書き換わっていた",
+    "修正：貸玉レート欄に入力するたび交換率が等価に戻されていた"
+  ]},
+  { v:"ver.1.2.0", date:"2026-07-28", items:[
+    "貸玉レートに4パチ／1パチのプリセットを追加（回転数・予算の目安も同時に切替）",
+    "交換率の選択肢を貸玉レートに応じて自動で作り替えるよう変更",
+    "回転数別カーブの表示幅をレートに比例させるよう変更"
+  ]},
+  { v:"ver.1.1.0", date:"2026-07-28", items:[
+    "バージョン表示と更新履歴を追加"
+  ]},
+  { v:"ver.1.0.0", date:"2026-07-28", items:[
+    "初回リリース",
+    "モード遷移モデル（通常／ST／LT／CHARGE／時短を同一形式で記述）",
+    "マルコフ連鎖による理論期待値とボーダーライン算出",
+    "モンテカルロ試行（予算切れ・遊技時間切れの早いほうで終了）",
+    "収支推移グラフと回転数別の期待収支カーブ",
+    "非等価交換率に対応"
+  ]}
+];
+
+/* =========================================================
+   機種データ
+   ---------------------------------------------------------
+   modes の各モード:
+     label         表示名
+     prob          大当たり確率（小数）
+     limit         継続回転数の上限（null＝無制限）
+     onLimit       上限到達時の移動先（null＝startMode）
+     consumesBalls 玉を消費するか（左打ち=true / 電サポ中=false）
+     hits          当選時の振り分け [{rate, balls, next}]（rate合計=1）
+   機種直下:
+     payoutRate    出玉増減率（1で増減なし / 0.95で-5%）
+     ballCap       1連チャンあたりの出玉上限（null＝なし）
+     yutime        遊タイム。使うときは startMode に limit / onLimit を設定
+   ========================================================= */
+const MACHINES = [
+{
+  id:"rezero2_129",
+  name:"P Re:ゼロから始める異世界生活 season2 129ver.",
+  note:"通常時1/129 ／ 右打ち中実質1/99.9 ／ 電サポ中の出玉増減 −5%",
+  lendYen:500, lendBalls:125,
+  payoutRate:0.95,
+  ballCap:100000,
+  startMode:"normal",
+  modes:{
+    normal:{
+      label:"通常（左打ち）", prob:1/129, limit:null, onLimit:null, consumesBalls:true,
+      hits:[
+        {rate:0.50, balls:300, next:"normal"},   // 時短なし
+        {rate:0.50, balls:300, next:"st"}
+      ]
+    },
+    st:{
+      label:"ST120回転", prob:1/99.9, limit:120, onLimit:"normal", consumesBalls:false,
+      hits:[
+        {rate:0.200, balls:300,  next:"st"},
+        {rate:0.550, balls:750,  next:"st"},
+        {rate:0.125, balls:1500, next:"st"},     // 25% × LT非突入50%
+        {rate:0.125, balls:1500, next:"lt"}      // 25% × LT突入50%
+      ]
+    },
+    lt:{
+      label:"LT（ラッキートリガー）", prob:1/99.9, limit:null, onLimit:null, consumesBalls:false,
+      hits:[
+        {rate:0.95, balls:300, next:"lt"},
+        {rate:0.05, balls:0,   next:"st"}        // 非継続。出玉なしでST120回転へ
+      ]
+    }
+  }
+},
+{
+  id:"sample_charge",
+  name:"【サンプル】CHARGE＋LT搭載機 319ver.",
+  note:"数値は架空です。書式の見本として入れています（等価ボーダー約16.6回転）",
+  lendYen:500, lendBalls:125,
+  payoutRate:1,
+  ballCap:100000,
+  startMode:"normal",
+  modes:{
+    normal:{
+      label:"通常（左打ち）", prob:1/319, limit:null, onLimit:null, consumesBalls:true,
+      hits:[
+        {rate:0.45, balls:450,  next:"charge"},
+        {rate:0.55, balls:1500, next:"rush"}
+      ]
+    },
+    charge:{
+      label:"CHARGEゾーン", prob:1/50, limit:100, onLimit:"normal", consumesBalls:false,
+      hits:[
+        {rate:0.88, balls:300, next:"charge"},
+        {rate:0.12, balls:300, next:"rush"}
+      ]
+    },
+    rush:{
+      label:"RUSH", prob:1/99, limit:150, onLimit:"normal", consumesBalls:false,
+      hits:[
+        {rate:0.82, balls:1500, next:"rush"},
+        {rate:0.05, balls:1500, next:"lt"},
+        {rate:0.13, balls:1500, next:"normal"}
+      ]
+    },
+    lt:{
+      label:"LT", prob:1/99, limit:null, onLimit:null, consumesBalls:false,
+      hits:[
+        {rate:0.75, balls:1500, next:"lt"},
+        {rate:0.25, balls:1500, next:"rush"}
+      ]
+    }
+  }
+}
+];
+
+/* ============ ユーティリティ ============ */
+const $ = id => document.getElementById(id);
+const yen = v => (v>=0?"+":"−") + Math.abs(Math.round(v)).toLocaleString("ja-JP") + "円";
+const num = (v,d=0) => Number(v).toLocaleString("ja-JP",{minimumFractionDigits:d,maximumFractionDigits:d});
+const cls = v => v>=0 ? "v plus" : "v minus";
+
+/* ============ 理論計算（マルコフ連鎖） ============ */
+function gauss(A,n){
+  for(let i=0;i<n;i++){
+    let piv=i;
+    for(let r=i;r<n;r++) if(Math.abs(A[r][i])>Math.abs(A[piv][i])) piv=r;
+    const t=A[i]; A[i]=A[piv]; A[piv]=t;
+    const d=A[i][i];
+    if(Math.abs(d)<1e-12) continue;
+    for(let c=i;c<=n;c++) A[i][c]/=d;
+    for(let r=0;r<n;r++){
+      if(r===i) continue;
+      const f=A[r][i];
+      if(!f) continue;
+      for(let c=i;c<=n;c++) A[r][c]-=f*A[i][c];
+    }
+  }
+  return A.map(r=>r[n]);
+}
+
+// 1サイクル（通常に入ってから次に通常へ戻るまで）の
+//   N: 通常モードでの期待回転数（＝玉を消費する回転数）
+//   G: 期待獲得玉
+function solveTheory(mc){
+  const pr = mc.payoutRate ?? 1;
+  const root = mc.startMode;
+  const names = Object.keys(mc.modes).filter(n=>n!==root);
+  const idx = {}; names.forEach((n,i)=>idx[n]=i);
+  const n = names.length;
+
+  const A = Array.from({length:n},()=>new Array(n+1).fill(0));
+  names.forEach((name,i)=>{
+    const m = mc.modes[name];
+    const q = m.limit ? 1-Math.pow(1-m.prob, m.limit) : 1;
+    A[i][i] += 1;
+    let rhs = 0;
+    m.hits.forEach(h=>{
+      rhs += q*h.rate*h.balls*pr;
+      if(h.next!==root) A[i][idx[h.next]] -= q*h.rate;
+    });
+    if(q<1){
+      const ol = m.onLimit || root;
+      if(ol!==root) A[i][idx[ol]] -= (1-q);
+    }
+    A[i][n] = rhs;
+  });
+  const V = n>0 ? gauss(A,n) : [];
+  const Vof = name => name===root ? 0 : V[idx[name]];
+
+  const rm = mc.modes[root];
+  const p = rm.prob, L = rm.limit;
+  const q = L ? 1-Math.pow(1-p,L) : 1;
+  const N = L ? (1-Math.pow(1-p,L))/p : 1/p;
+  let G = 0;
+  rm.hits.forEach(h=>{ G += q*h.rate*(h.balls*pr + Vof(h.next)); });
+  if(q<1) G += (1-q)*Vof(rm.onLimit || root);
+
+  return {N, G, Vof};
+}
+
+// 基準金額(cfg.unitYen)あたり spins 回転のときの「通常時1000回転あたりの期待収支（円）」
+function evPer1000(theory, cfg, spins){
+  const c = (cfg.unitYen/cfg.lendRate)/spins;   // 1回転あたり必要玉
+  const need = c*theory.N;                 // 1サイクルで必要な玉
+  const gain = theory.G;                   // 1サイクルの獲得玉
+  const cashBalls = Math.max(0, need-gain);
+  const keepBalls = Math.max(0, gain-need);
+  const perCycle = keepBalls*cfg.exRate - cashBalls*cfg.lendRate;
+  return perCycle * (1000/theory.N);
+}
+
+/* ============ モンテカルロ試行 ============ */
+// 遊技時間の消化速度（秒）
+const SEC_NORMAL  = 14.4;   // 通常時1回転（≒250回転/時）
+const SEC_DENSUP  = 7.2;    // 電サポ中1回転（≒500回転/時）
+const SEC_PER_BALL= 0.06;   // 大当たり消化（1,500発≒90秒）
+
+function runTrial(mc, cfg, hist){
+  const pr = mc.payoutRate ?? 1;
+  const cap = mc.ballCap || Infinity;
+  const root = mc.startMode;
+  const bps = (cfg.unitYen/cfg.lendRate)/cfg.spins;   // 1回転あたり消費玉
+
+  let cash=0, balls=0, spins=0, normalSpins=0, chain=0, firstHits=0, totalHits=0, gained=0;
+  let maxChain=0, capHits=0;
+  let mode=root, modeSpins=0, endReason="time";
+  const enters = {};
+  let sec = 0;
+  const maxSec = cfg.hours*3600;
+
+  /* 収支推移の記録。横軸は通常時の回転数だけを数える。
+     電サポ中は横軸が進まないので、連チャンの出玉は縦の立ち上がりとして描かれる。 */
+  const cashSpins = cfg.budget/(bps*cfg.lendRate);   // 現金だけで回せる通常回転数
+  const sample = Math.max(1, Math.min(200, Math.round(cashSpins*3/150)));
+  let lastRec = 0;
+  const rec = () => {
+    if(hist && hist.length < 4000) hist.push({x:normalSpins, y: balls*cfg.exRate - cash});
+  };
+
+  /* 時間切れの判定は「玉を消費するモード＝通常」の頭でのみ行う。
+     RUSH／LT中に時間が来ても、通常に戻るまでは連チャンを最後まで消化する。 */
+  while(spins < 500000){
+    const m = mc.modes[mode];
+    if(m.consumesBalls){
+      if(sec >= maxSec){ endReason="time"; break; }
+      if(balls < bps){
+        const cost = (bps-balls)*cfg.lendRate;
+        if(cash+cost > cfg.budget+1e-9){ endReason="budget"; break; }
+        cash += cost; balls = bps;
+      }
+      balls -= bps;
+      normalSpins++;
+      sec += SEC_NORMAL;
+    } else {
+      sec += SEC_DENSUP;
+    }
+    spins++; modeSpins++;
+
+    if(Math.random() < m.prob){
+      totalHits++;
+      if(mode===root){ firstHits++; rec(); }   // 初当たり直前の水準を残す
+      let r=Math.random(), acc=0, hit=m.hits[m.hits.length-1];
+      for(const h of m.hits){ acc+=h.rate; if(r<acc){ hit=h; break; } }
+      /* 出玉上限は「到達後は次の当たりが付かない」ルール。
+         その大当たり自体の出玉は満額もらえるので途中では切らない。
+         結果として累計は上限を大当たり1回分ぶん超えることがある。 */
+      const gain = hit.balls*pr;
+      balls += gain; chain += gain; gained += gain;
+      sec += gain*SEC_PER_BALL;
+      if(chain > maxChain) maxChain = chain;
+      let next = hit.next;
+      if(chain >= cap){ next = root; capHits++; }
+      if(next===root) chain = 0;
+      if(next!==mode) enters[next] = (enters[next]||0)+1;
+      mode = next; modeSpins = 0;
+      rec(); lastRec = normalSpins;   // 出玉を反映（横軸は進まないので縦に伸びる）
+    } else if(m.limit && modeSpins >= m.limit){
+      const next = m.onLimit || root;
+      if(next===root) chain = 0;
+      if(next!==mode) enters[next] = (enters[next]||0)+1;
+      mode = next; modeSpins = 0;
+    }
+
+    // 通常時は一定間隔で、大当たり時は必ず記録する
+    if(normalSpins - lastRec >= sample){ rec(); lastRec = normalSpins; }
+  }
+  rec();
+
+  return {
+    profit: balls*cfg.exRate - cash,
+    cash, spins, normalSpins, firstHits, totalHits, enters, endReason,
+    // 連チャン消化のために設定時間を超えた分
+    overtime: Math.max(0, sec/3600 - cfg.hours),
+    gained, maxChain, capHits, hours: sec/3600, finalBalls: balls
+  };
+}
+
+function percentile(sorted, p){
+  if(!sorted.length) return 0;
+  const i = (sorted.length-1)*p;
+  const lo = Math.floor(i), hi = Math.ceil(i);
+  return sorted[lo] + (sorted[hi]-sorted[lo])*(i-lo);
+}
+
+/* ============ 画面 ============ */
+let chartRun=null, chartCurve=null, chartHist=null;
+
+function initMachines(){
+  const sel = $("machine");
+  MACHINES.forEach(m=>{
+    const o = document.createElement("option");
+    o.value = m.id; o.textContent = m.name;
+    sel.appendChild(o);
+  });
+  sel.addEventListener("change", onMachineChange);
+  onMachineChange();
+}
+
+function currentMachine(){
+  return MACHINES.find(m=>m.id === $("machine").value);
+}
+
+function onMachineChange(){
+  const mc = currentMachine();
+  $("specNote").textContent = mc.note || "";
+  renderSpec(mc);
+}
+
+function renderSpec(mc){
+  const pr = mc.payoutRate ?? 1;
+  let html = "";
+  Object.entries(mc.modes).forEach(([key,m])=>{
+    const lim = m.limit ? m.limit+"回転で終了 → "+(mc.modes[m.onLimit||mc.startMode].label) : "回転数上限なし";
+    html += `<div class="mode-h">${m.label}</div>`;
+    html += `<div class="note" style="margin-top:0;">確率 1/${num(1/m.prob,1)} ／ ${lim} ／ ${m.consumesBalls?"玉を消費":"電サポ（玉の消費なし）"}</div>`;
+    html += "<table><tr><th>振り分け</th><th>出玉</th><th>実質</th><th>移行先</th></tr>";
+    m.hits.forEach(h=>{
+      html += `<tr><td>${num(h.rate*100,1)}%</td><td>${num(h.balls)}発</td><td>${num(h.balls*pr)}発</td><td>${mc.modes[h.next].label}</td></tr>`;
+    });
+    html += "</table>";
+  });
+  html += `<div class="note">出玉増減率 ×${pr}　／　出玉上限 ${mc.ballCap?num(mc.ballCap)+"発":"なし"}</div>`;
+  $("specBody").innerHTML = html;
+}
+
+/* ---- 貸玉レート（4パチ / 1パチ / カスタム） ---- */
+const RATE_PRESETS = {
+  // unitYen: 回転数を数える基準金額。4パチは1,000円(1k)、1パチは200円(0.2k)
+  // nominal: 名目レート。交換率の基準になる（貸玉レートとは別物）
+  "4": {yen:500, balls:125, unitYen:1000, spins:16, budget:30000, nominal:4},
+  "1": {yen:500, balls:500, unitYen:200,  spins:13, budget:10000, nominal:1}
+};
+const DEFAULT_UNIT_YEN = 1000;   // カスタムレートのとき
+const NOMINAL_RATES = [4, 2, 1, 0.5, 0.2];   // 名目レートの候補
+
+function unitYen(){
+  const p = RATE_PRESETS[$("ratePreset").value];
+  return p ? p.unitYen : DEFAULT_UNIT_YEN;
+}
+function unitLabel(u){ return `${u/1000}k`; }   // 1000→"1k" / 200→"0.2k"
+
+/* 名目レート＝交換率の基準。
+   ホールは貸玉を割高にすることがある（例：500円で118発＝4.24円/玉）が、
+   交換は4円/玉のまま。貸玉レートをそのまま交換率にすると実態と合わないので、
+   貸玉レート以下で最大の標準レートを名目とする。 */
+function nominalRate(){
+  const p = RATE_PRESETS[$("ratePreset").value];
+  if(p) return p.nominal;
+  const r = lendRate();
+  if(!(r>0)) return NaN;
+  const hit = NOMINAL_RATES.find(n => n <= r + 1e-9);
+  return hit !== undefined ? hit : r;   // 0.2円未満は貸玉レートをそのまま使う
+}
+
+function updateSpinsLabel(){
+  $("spinsLabel").textContent = `${unitLabel(unitYen())}あたり回転数`;
+}
+
+/* 基準金額や貸玉レートが変わったとき、表示中の回転数を読み替える。
+   保つのは「1回転あたりの玉数」。台の釘の状態はレートでは変わらないため、
+   円ベースで換算すると4パチ→1パチで玉数が4倍になってしまう。 */
+let baseUnitYen = DEFAULT_UNIT_YEN, baseLendRate = null;
+
+function rememberBase(){
+  baseUnitYen = unitYen();
+  const r = lendRate();
+  if(isFinite(r) && r>0) baseLendRate = r;
+}
+
+function convertSpinsToCurrent(){
+  const u = unitYen(), r = lendRate();
+  if(!(r>0) || !(baseLendRate>0)){ rememberBase(); return; }
+  if(u === baseUnitYen && Math.abs(r-baseLendRate) < 1e-9){ rememberBase(); return; }
+  const s = parseFloat($("spins1k").value);
+  if(s > 0){
+    const cPrev = (baseUnitYen/baseLendRate)/s;   // 変更前の 玉/回転
+    const next  = (u/r)/cPrev;
+    if(next > 0 && isFinite(next)) $("spins1k").value = String(Math.round(next*100)/100);
+  }
+  rememberBase();
+}
+
+function lendRate(){
+  const y = parseFloat($("lendYen").value), b = parseFloat($("lendBalls").value);
+  return (y>0 && b>0) ? y/b : NaN;
+}
+
+// プリセットを選ぶと、貸玉レートに加えて回転数・予算の目安も入れ替える
+function applyRatePreset(){
+  const v = $("ratePreset").value;
+  if(v === "custom"){ onLendChanged(); return; }
+  const p = RATE_PRESETS[v];
+  $("lendYen").value   = p.yen;
+  $("lendBalls").value = p.balls;
+  $("spins1k").value   = p.spins;
+  $("budget").value    = p.budget;
+  // レートを選び直したら交換率は必ず名目レートに戻す
+  // （4パチなら4円/玉、1パチなら1円/玉）
+  onLendChanged(true);
+  rememberBase();   // 回転数はプリセット値をセット済みなので換算しない
+}
+
+// 「○円で○発」を直接いじられたとき、どのプリセットに一致するかを判定
+function syncRateSelect(){
+  const y = parseFloat($("lendYen").value), b = parseFloat($("lendBalls").value);
+  for(const k of ["4","1"]){
+    const p = RATE_PRESETS[k];
+    if(Math.abs(y/b - p.yen/p.balls) < 1e-9){ $("ratePreset").value = k; return; }
+  }
+  $("ratePreset").value = "custom";
+}
+
+// 交換率の選択肢は「名目レート」に合わせて作り直す。
+// 貸玉レートではないので、500円で118発（4.24円/玉）でも既定は4円/玉になる。
+let lastBuiltRate = null;
+function buildExchangeOptions(nominal, forceBase){
+  const keep = forceBase ? "base" : $("exPreset").value;
+  const lr = lendRate();
+  const isEqual = isFinite(lr) && Math.abs(nominal-lr) < 1e-9;
+  const baseLabel = isEqual ? `等価交換（${num(nominal,2)}円/玉）`
+                            : `${num(nominal,2)}円交換（貸玉${num(lr,2)}円/玉）`;
+  const o = [`<option value="base">${baseLabel}</option>`];
+  // 個数交換は名目レート以下のものだけ
+  const kosuu = [28,30,32.5,33,35,40].filter(k => 100/k <= nominal + 1e-9);
+  if(kosuu.length >= 3){
+    kosuu.forEach(k=>{
+      o.push(`<option value="c:${100/k}">${k}個交換（約${num(100/k,3)}円/玉）</option>`);
+    });
+  }else{
+    // 低レートは個数交換の慣習が使えないので、名目に対する割合で示す
+    [0.95,0.9,0.85,0.8].forEach(f=>{
+      o.push(`<option value="c:${nominal*f}">${num(nominal*f,3)}円/玉（${num(nominal,2)}円の${Math.round(f*100)}%）</option>`);
+    });
+  }
+  o.push(`<option value="custom">直接入力（円/玉）</option>`);
+  $("exPreset").innerHTML = o.join("");
+  // 「基準」「直接入力」は作り直しても選択を保てる
+  $("exPreset").value = (keep === "custom" || keep === "base") ? keep : "base";
+  // 直接入力中はユーザーが打った値を残す（勝手に書き換えない）
+  if($("exPreset").value !== "custom") $("exCustom").value = String(Math.round(nominal*1000)/1000);
+  $("exCustomWrap").classList.toggle("hidden", $("exPreset").value !== "custom");
+}
+
+// 実際に適用される交換率を常に表示して、取り違えを防ぐ
+function updateExNote(){
+  const lr = lendRate(), er = exRate();
+  if(!(lr>0) || !(er>0)){ $("exNote").textContent = ""; return; }
+  if(er > lr + 1e-9){
+    $("exNote").innerHTML = `<span class="minus">交換率（${num(er,3)}円/玉）が貸玉レート（${num(lr,2)}円/玉）を超えています。`
+      + `交換率は貸玉レート以下にしてください。</span>`;
+    return;
+  }
+  const kind = Math.abs(er-lr) < 1e-9
+    ? "等価（貸玉レートと同じ）"
+    : `貸玉${num(lr,2)}円/玉に対し ${num(er/lr*100,1)}%`;
+  $("exNote").innerHTML = `適用される交換率：<b>${num(er,3)}円/玉</b>（${kind}）`;
+}
+
+function onLendChanged(forceBase){
+  const r = lendRate();
+  $("lendNote").textContent = isFinite(r) && r>0
+    ? `＝ ${num(r,2)}円/玉（1,000円で${num(1000/r,0)}玉）`
+    : "";
+  syncRateSelect();
+  updateSpinsLabel();
+  // 選択肢の中身は名目レート、ラベルには貸玉レートも出すのでどちらの変化でも作り直す
+  const nom = nominalRate();
+  const changed = lastBuiltRate === null
+    || Math.abs(nom - lastBuiltRate.nom) > 1e-9
+    || Math.abs(r   - lastBuiltRate.lend) > 1e-9;
+  if(isFinite(nom) && nom>0 && (forceBase || changed)){
+    lastBuiltRate = {nom, lend:r};
+    buildExchangeOptions(nom, forceBase);
+  }
+  updateExNote();
+}
+
+function exRate(){
+  const v = $("exPreset").value;
+  if(v === "base")   return nominalRate();
+  if(v === "custom") return parseFloat($("exCustom").value);
+  if(v.startsWith("c:")) return parseFloat(v.slice(2));
+  return NaN;
+}
+
+const UNLIMITED_HOURS = 100000;   // 遊技時間0＝時間無制限（理論値の検証用）
+
+function readConfig(){
+  const h = parseFloat($("hours").value);
+  return {
+    hoursInput: h,
+    unlimited: !(h > 0),
+    lendRate: lendRate(),
+    exRate: exRate(),
+    unitYen: unitYen(),
+    spins: parseFloat($("spins1k").value),
+    budget: parseFloat($("budget").value),
+    hours: (h > 0) ? h : UNLIMITED_HOURS,
+    trials: parseInt($("trials").value,10)
+  };
+}
+
+function updateHoursNote(){
+  const h = parseFloat($("hours").value);
+  if(isNaN(h)){ $("hoursNote").textContent = ""; return; }
+  $("hoursNote").textContent = h>0
+    ? `終了条件：${num(h,1)}時間か予算切れの早いほう。ただしRUSH／LT中に時間が来た場合は通常に戻るまで打ち切りません。終了時に残玉を換金します（通常${num(3600/SEC_NORMAL)}回転/時・電サポ${num(3600/SEC_DENSUP)}回転/時で消化）。`
+    : `時間無制限：予算を使い切るまで打ち続けます。理論値の検証用で、実戦の想定ではありません。`;
+}
+
+function run(){
+  const mc = currentMachine();
+  const cfg = readConfig();
+  if(!(cfg.lendRate>0) || !(cfg.exRate>0) || !(cfg.spins>0) || !(cfg.budget>0) || isNaN(cfg.hoursInput)){
+    alert("入力値を確認してください。");
+    return;
+  }
+  if(cfg.exRate > cfg.lendRate + 1e-9){
+    alert("交換率が貸玉レートを上回っています。入力を確認してください。");
+    return;
+  }
+
+  const theory = solveTheory(mc);
+  const unit = cfg.unitYen, ulab = unitLabel(unit);
+  const c = (unit/cfg.lendRate)/cfg.spins;
+  const ev1000 = evPer1000(theory, cfg, cfg.spins);
+
+  // ボーダー（持ち玉）: 必要玉 = 獲得玉
+  const cBorder = theory.G/theory.N;
+  const borderHold = (unit/cfg.lendRate)/cBorder;
+  // ボーダー（現金）: 必要玉×貸単価 = 獲得玉×交換率
+  const cBorderCash = (theory.G/theory.N)*(cfg.exRate/cfg.lendRate);
+  const borderCash = (unit/cfg.lendRate)/cBorderCash;
+
+  $("kEv").textContent = yen(ev1000);
+  $("kEv").className = cls(ev1000);
+  $("kBorder").innerHTML = num(borderHold,1) + `<small>回転/${ulab}</small>`;
+  $("kBorderCash").innerHTML = num(borderCash,1) + `<small>回転/${ulab}</small>`;
+  $("kG").innerHTML = num(theory.G,0) + '<small>発</small>';
+  $("kC").innerHTML = num(c,2) + '<small>玉</small>';
+
+  // 試行
+  const profits = [], histories = [];
+  let sSpins=0, sNormal=0, sFirst=0, sTotal=0, sCash=0, sTimeUp=0, sHours=0, sGained=0;
+  let sOver=0, nOver=0, maxChainAll=0, sCapHits=0;
+  const sEnters = {};
+  for(let i=0;i<cfg.trials;i++){
+    const hist = i < 30 ? [{x:0,y:0}] : null;
+    const r = runTrial(mc, cfg, hist);
+    profits.push(r.profit);
+    if(hist) histories.push(hist);
+    sSpins += r.spins; sNormal += r.normalSpins;
+    sFirst += r.firstHits; sTotal += r.totalHits; sCash += r.cash; sHours += r.hours;
+    sGained += r.gained;
+    if(r.endReason === "time") sTimeUp++;
+    sOver += r.overtime;
+    if(r.overtime > 0) nOver++;
+    if(r.maxChain > maxChainAll) maxChainAll = r.maxChain;
+    sCapHits += r.capHits;
+    Object.entries(r.enters).forEach(([k,v])=> sEnters[k] = (sEnters[k]||0)+v );
+  }
+  const sorted = [...profits].sort((a,b)=>a-b);
+  const mean = profits.reduce((a,b)=>a+b,0)/profits.length;
+  const median = percentile(sorted,0.5);
+  const winRate = profits.filter(p=>p>0).length/profits.length;
+
+  $("tMean").textContent = yen(mean);   $("tMean").className = cls(mean);
+  $("tMedian").textContent = yen(median); $("tMedian").className = cls(median);
+  $("tWin").textContent = num(winRate*100,1)+"%"; $("tWin").className = "v";
+  $("tP5").textContent = yen(percentile(sorted,0.05));  $("tP5").className = cls(percentile(sorted,0.05));
+  $("tP95").textContent = yen(percentile(sorted,0.95)); $("tP95").className = cls(percentile(sorted,0.95));
+
+  // 理論値（時間無制限）と試行値の差の正体を明示する
+  const realG = sFirst>0 ? sGained/sFirst : 0;
+  const lossG = theory.G - realG;
+  const overPct = nOver/cfg.trials*100;
+  $("gapNote").innerHTML =
+    `初当たり1回あたりの出玉は<b>実測 ${num(realG,0)}発</b>（理論 ${num(theory.G,0)}発、差 ${num(lossG,0)}発）。`
+    + `時間切れになっても連チャンは最後まで消化するため、${num(overPct,1)}%の試行で`
+    + `平均 +${num(sOver/cfg.trials,2)}時間 の超過が出ています。`
+    + `<br><b>試行の平均が理論値より下に出る理由</b>：理論値は資金無制限の長期期待値です。`
+    + `予算が少ないほど、優位性を回収し切る前に飛ぶ確率が上がります（予算を増やすと理論値に近づきます）。`;
+
+  let dt = "<tr><th>項目</th><th>平均</th></tr>";
+  dt += `<tr><td>貸玉レート</td><td>${num(cfg.lendRate,2)}円/玉</td></tr>`;
+  dt += `<tr><td>交換率</td><td>${num(cfg.exRate,3)}円/玉</td></tr>`;
+  dt += `<tr><td>回転数の基準</td><td>${num(cfg.spins,2)}回転/${ulab}（${num(cfg.unitYen)}円）</td></tr>`;
+  dt += `<tr><td>総回転数</td><td>${num(sSpins/cfg.trials,0)}回転</td></tr>`;
+  dt += `<tr><td>通常時回転数</td><td>${num(sNormal/cfg.trials,0)}回転</td></tr>`;
+  dt += `<tr><td>初当たり回数</td><td>${num(sFirst/cfg.trials,2)}回</td></tr>`;
+  dt += `<tr><td>総大当たり回数</td><td>${num(sTotal/cfg.trials,2)}回</td></tr>`;
+  dt += `<tr><td>実際の投資額</td><td>${num(sCash/cfg.trials,0)}円</td></tr>`;
+  dt += `<tr><td>実際の遊技時間</td><td>${num(sHours/cfg.trials,1)}時間</td></tr>`;
+  dt += `<tr><td>時間切れで終了</td><td>${num(sTimeUp/cfg.trials*100,1)}%</td></tr>`;
+  dt += `<tr><td>予算切れで終了</td><td>${num((1-sTimeUp/cfg.trials)*100,1)}%</td></tr>`;
+  dt += `<tr><td>連チャン消化で時間超過</td><td>${num(nOver/cfg.trials*100,1)}%（平均+${num(sOver/cfg.trials,2)}時間）</td></tr>`;
+  dt += `<tr><td>初当たり1回あたり出玉（実測）</td><td>${num(realG,0)}発</td></tr>`;
+  dt += `<tr><td>同（理論・時間無制限）</td><td>${num(theory.G,0)}発</td></tr>`;
+  dt += `<tr><td>打ち切りロス</td><td>${num(lossG,0)}発</td></tr>`;
+  dt += `<tr><td>最大連チャン出玉（全試行中）</td><td>${num(maxChainAll,0)}発</td></tr>`;
+  dt += `<tr><td>出玉上限に到達</td><td>${mc.ballCap ? `${num(sCapHits)}回（上限${num(mc.ballCap)}発）` : "上限なし"}</td></tr>`;
+  Object.entries(sEnters).forEach(([k,v])=>{
+    if(k===mc.startMode) return;
+    dt += `<tr><td>${mc.modes[k].label} 突入回数</td><td>${num(v/cfg.trials,2)}回</td></tr>`;
+  });
+  $("tDetail").innerHTML = dt;
+
+  drawHist(profits, mean, median);
+  drawRun(histories);
+  drawCurve(mc, cfg, theory, mean, sNormal/cfg.trials);
+
+  $("result").classList.remove("hidden");
+  $("result").scrollIntoView({behavior:"smooth", block:"start"});
+}
+
+// 収支の分布。予算切れの山が左端に立ち、右に長い裾を引く形になる
+function drawHist(profits, mean, median){
+  const lo = Math.min(...profits), hi = Math.max(...profits);
+  const BINS = 26;
+  const w = (hi-lo)/BINS || 1;
+  const counts = new Array(BINS).fill(0);
+  profits.forEach(p=>{
+    let i = Math.floor((p-lo)/w);
+    if(i >= BINS) i = BINS-1;
+    if(i < 0) i = 0;
+    counts[i]++;
+  });
+  const centers = counts.map((_,i)=> lo + w*(i+0.5));
+  const man = v => (v/10000).toFixed(1)+"万";
+
+  if(chartHist) chartHist.destroy();
+  chartHist = new Chart($("chartHist"), {
+    type:"bar",
+    data:{
+      labels: centers.map(man),
+      datasets:[{
+        data: counts.map(c=> c/profits.length*100),
+        backgroundColor: centers.map(v=> v>=0 ? "rgba(55,214,122,0.75)" : "rgba(255,92,114,0.75)"),
+        borderWidth:0, barPercentage:1, categoryPercentage:1
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{
+        legend:{display:false},
+        tooltip:{callbacks:{
+          title: it => `${yen(lo+w*it[0].dataIndex)} 〜 ${yen(lo+w*(it[0].dataIndex+1))}`,
+          label: it => `${num(it.parsed.y,1)}%（${counts[it.dataIndex]}回）`
+        }}
+      },
+      scales:{
+        x:{title:{display:true,text:"収支（円）",color:"#98a3ba",font:{size:10}},
+           ticks:{color:"#98a3ba",font:{size:10},maxTicksLimit:7,autoSkip:true},
+           grid:{display:false}},
+        y:{title:{display:true,text:"割合（%）",color:"#98a3ba",font:{size:10}},
+           ticks:{color:"#98a3ba",font:{size:10}}, grid:{color:"#2e364a"}}
+      }
+    }
+  });
+
+  const worst = counts[0]/profits.length*100;
+  $("histNote").innerHTML =
+    `緑が勝ち、赤が負け。平均 <b>${yen(mean)}</b>／中央値 <b>${yen(median)}</b>。`
+    + `最も左の帯（${yen(lo)}前後）に全体の${num(worst,1)}%が集まっています。`;
+}
+
+function drawRun(histories){
+  const ds = histories.map((h,i)=>({
+    data:h, borderColor:"rgba(77,163,255,0.45)", borderWidth:1.2,
+    pointRadius:0, tension:0, fill:false
+  }));
+  if(chartRun) chartRun.destroy();
+  chartRun = new Chart($("chartRun"), {
+    type:"line",
+    data:{datasets:ds},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      parsing:false, normalized:true,
+      plugins:{legend:{display:false}, tooltip:{enabled:false}},
+      scales:{
+        x:{type:"linear", title:{display:true,text:"通常時回転数",color:"#98a3ba",font:{size:10}},
+           ticks:{color:"#98a3ba",font:{size:10},maxTicksLimit:6}, grid:{color:"#2e364a"}},
+        y:{title:{display:true,text:"収支（円）",color:"#98a3ba",font:{size:10}},
+           ticks:{color:"#98a3ba",font:{size:10},
+                  callback:v=>(v/10000).toFixed(0)+"万"}, grid:{color:"#2e364a"}}
+      }
+    }
+  });
+}
+
+function drawCurve(mc, cfg, theory, trialMean, trialNormalSpins){
+  // 表示幅は中心値に比例させる（基準金額で回転数の桁が変わるため）
+  const ulab = unitLabel(cfg.unitYen);
+  const center = cfg.spins;
+  const half = Math.max(6, center*0.3);
+  const lo = Math.max(1, center-half), hi = center+half;
+  const step = (hi-lo)/60;
+  const pts = [];
+  for(let r=lo; r<=hi+1e-9; r+=step) pts.push({x:r, y:evPer1000(theory,cfg,r)});
+
+  // 試行平均を1000通常回転あたりに換算
+  const trialPt = trialNormalSpins>0
+    ? [{x:center, y: trialMean*1000/trialNormalSpins}] : [];
+
+  const yAt = evPer1000(theory,cfg,center);
+  const ys = pts.map(p=>p.y);
+  const marker = [{x:center,y:Math.min(...ys)},{x:center,y:Math.max(...ys)}];
+
+  if(chartCurve) chartCurve.destroy();
+  chartCurve = new Chart($("chartCurve"), {
+    type:"line",
+    data:{datasets:[
+      {label:"理論値(時間無制限)", data:pts, borderColor:"#4da3ff", borderWidth:2, pointRadius:0, tension:.15},
+      {label:"現在の設定", data:marker, borderColor:"#98a3ba", borderWidth:1,
+       borderDash:[4,4], pointRadius:0},
+      {label:"試行平均", data:trialPt, type:"scatter", borderColor:"#37d67a",
+       backgroundColor:"#37d67a", pointRadius:5}
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false, animation:false,
+      parsing:false, normalized:true,
+      plugins:{
+        legend:{labels:{color:"#98a3ba",font:{size:10},boxWidth:12}},
+        tooltip:{callbacks:{label:c=>`${num(c.parsed.x,2)}回転/${ulab} → ${yen(c.parsed.y)}`}}
+      },
+      scales:{
+        x:{type:"linear", title:{display:true,text:`${ulab}あたり回転数`,color:"#98a3ba",font:{size:10}},
+           ticks:{color:"#98a3ba",font:{size:10},maxTicksLimit:7}, grid:{color:"#2e364a"}},
+        y:{title:{display:true,text:"1,000回転あたり収支（円）",color:"#98a3ba",font:{size:10}},
+           ticks:{color:"#98a3ba",font:{size:10},
+                  callback:v=>Math.round(v).toLocaleString("ja-JP")}, grid:{color:"#2e364a"}}
+      }
+    }
+  });
+}
+
+/* ============ 起動 ============ */
+$("exPreset").addEventListener("change", e=>{
+  $("exCustomWrap").classList.toggle("hidden", e.target.value !== "custom");
+  updateExNote();
+});
+$("exCustom").addEventListener("input", updateExNote);
+// 引数なしで呼ぶ（イベントオブジェクトが forceEqual として渡らないように）
+// input は打鍵ごとに飛ぶので表示更新だけ。回転数の換算は入力が確定する change で行う
+["lendYen","lendBalls"].forEach(id=>{
+  $(id).addEventListener("input",  ()=>onLendChanged());
+  $(id).addEventListener("change", ()=>{ onLendChanged(); convertSpinsToCurrent(); });
+});
+$("ratePreset").addEventListener("change", applyRatePreset);
+$("hours").addEventListener("input", updateHoursNote);
+$("run").addEventListener("click", ()=>{
+  const b = $("run");
+  b.disabled = true; b.textContent = "計算中…";
+  setTimeout(()=>{
+    try{ run(); }
+    catch(err){ alert("計算エラー: "+err.message); console.error(err); }
+    b.disabled = false; b.textContent = "計算する";
+  }, 30);
+});
+
+function renderVersion(){
+  $("verBadge").textContent = VERSION;
+  document.title = `パチンコ期待値シミュレーター ${VERSION}`;
+  $("changelog").innerHTML = CHANGELOG.map(c=>
+    `<li><span class="lv">${c.v}</span><span class="ld">${c.date}</span>`
+    + `<ul>${c.items.map(i=>`<li>${i}</li>`).join("")}</ul></li>`
+  ).join("");
+}
+
+initMachines();
+onLendChanged();
+rememberBase();
+updateHoursNote();
+renderVersion();
+</script>
+</body>
+</html>
