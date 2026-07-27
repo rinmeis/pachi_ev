@@ -282,7 +282,7 @@ details .inner{margin-top:10px;}
     <summary>計算の前提</summary>
     <div class="inner note" style="margin-top:0;">
       ・電サポ（右打ち）中は玉が減らないものとして扱います。<br>
-      ・大当たり出玉には機種ごとの出玉増減率を掛けています（Re:ゼロ2は −5%＝×0.95）。<br>
+      ・電サポ中の出玉増減として、全機種の大当たり出玉に −5%（×0.95）を掛けています。機種ごとに変えたい場合はその機種の payoutRate に個別の値を書きます。<br>
       ・出玉上限は「到達後は次の当たりが付かない」ルールとして扱います。上限に達した大当たり自体の出玉は満額もらえるので、累計は上限を大当たり1回分ぶん超えることがあります。時間切れ後に連チャンを消化する場合も同じです。<br>
       ・理論値の現金比率は「1サイクルで必要な玉のうち前回出玉で足りない分を現金購入」という近似です。これは資金が無制限にある前提なので、予算が有限な試行の平均は理論値より下に出ます（予算を増やすと一致していきます）。<br>
       ・出玉上限がある機種では、理論値より試行結果を信頼してください。<br>
@@ -312,9 +312,14 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.9.1";
+const VERSION = "ver.1.10.0";
 
 const CHANGELOG = [
+  { v:"ver.1.10.0", date:"2026-07-28", items:[
+    "機種追加：e東京喰種W（通常1/199／RUSH 1/95.3・130回転）",
+    "電サポ中の出玉増減 −5% を全機種共通の既定値に変更（従来はRe:ゼロ2のみ）",
+    "スペック詳細に出玉増減率が共通値か個別指定かを表示"
+  ]},
   { v:"ver.1.9.1", date:"2026-07-28", items:[
     "修正：理論値カードの説明が ver.1.6.0 のままで、ver.1.7.0 で廃止した「RUSH/LT途中の打ち切り」と削除済みの項目名を指していた",
     "詳細の「打ち切りロス」を「実測と理論の差」に改称（打ち切りは ver.1.7.0 で解消済みのため）"
@@ -388,17 +393,20 @@ const CHANGELOG = [
      consumesBalls 玉を消費するか（左打ち=true / 電サポ中=false）
      hits          当選時の振り分け [{rate, balls, next}]（rate合計=1）
    機種直下:
-     payoutRate    出玉増減率（1で増減なし / 0.95で-5%）
+     payoutRate    出玉増減率。省略すると全機種共通の DEFAULT_PAYOUT_RATE
      ballCap       1連チャンあたりの出玉上限（null＝なし）
      yutime        遊タイム。使うときは startMode に limit / onLimit を設定
    ========================================================= */
+
+// 電サポ中の出玉増減。全機種に適用する（機種側で payoutRate を書けば上書き）
+const DEFAULT_PAYOUT_RATE = 0.95;   // −5%
+
 const MACHINES = [
 {
   id:"rezero2_129",
   name:"P Re:ゼロから始める異世界生活 season2 129ver.",
-  note:"通常時1/129 ／ 右打ち中実質1/99.9 ／ 電サポ中の出玉増減 −5%",
+  note:"通常時1/129 ／ 右打ち中実質1/99.9",
   lendYen:500, lendBalls:125,
-  payoutRate:0.95,
   ballCap:100000,
   startMode:"normal",
   modes:{
@@ -428,11 +436,42 @@ const MACHINES = [
   }
 },
 {
+  id:"tokyoghoul_w",
+  name:"e東京喰種W",
+  note:"通常時1/199 ／ RUSH中1/95.3・130回転",
+  lendYen:500, lendBalls:125,
+  ballCap:100000,
+  startMode:"normal",
+  modes:{
+    normal:{
+      label:"通常（左打ち）", prob:1/199, limit:null, onLimit:null, consumesBalls:true,
+      hits:[
+        {rate:0.50, balls:300,  next:"charge"},   // 300玉のみ → 1/95.3でRUSH抽選
+        {rate:0.25, balls:1500, next:"normal"},   // 1500玉のみ
+        {rate:0.25, balls:1500, next:"rush"}      // 1500玉＋RUSH
+      ]
+    },
+    charge:{
+      // 300玉当たりのあとに1/95.3を1回引ければRUSHへ。外れれば通常に戻る
+      label:"RUSH抽選（1回）", prob:1/95.3, limit:1, onLimit:"normal", consumesBalls:false,
+      hits:[
+        {rate:1.0, balls:0, next:"rush"}
+      ]
+    },
+    rush:{
+      label:"RUSH（130回転）", prob:1/95.3, limit:130, onLimit:"normal", consumesBalls:false,
+      hits:[
+        {rate:0.97, balls:3000, next:"rush"},
+        {rate:0.03, balls:6000, next:"rush"}
+      ]
+    }
+  }
+},
+{
   id:"sample_charge",
   name:"【サンプル】CHARGE＋LT搭載機 319ver.",
-  note:"数値は架空です。書式の見本として入れています（等価ボーダー約16.6回転）",
+  note:"数値は架空です。書式の見本として入れています",
   lendYen:500, lendBalls:125,
-  payoutRate:1,
   ballCap:100000,
   startMode:"normal",
   modes:{
@@ -498,7 +537,7 @@ function gauss(A,n){
 //   N: 通常モードでの期待回転数（＝玉を消費する回転数）
 //   G: 期待獲得玉
 function solveTheory(mc){
-  const pr = mc.payoutRate ?? 1;
+  const pr = mc.payoutRate ?? DEFAULT_PAYOUT_RATE;
   const root = mc.startMode;
   const names = Object.keys(mc.modes).filter(n=>n!==root);
   const idx = {}; names.forEach((n,i)=>idx[n]=i);
@@ -552,7 +591,7 @@ const SEC_DENSUP  = 7.2;    // 電サポ中1回転（≒500回転/時）
 const SEC_PER_BALL= 0.06;   // 大当たり消化（1,500発≒90秒）
 
 function runTrial(mc, cfg, hist){
-  const pr = mc.payoutRate ?? 1;
+  const pr = mc.payoutRate ?? DEFAULT_PAYOUT_RATE;
   const cap = mc.ballCap || Infinity;
   const root = mc.startMode;
   const bps = (cfg.unitYen/cfg.lendRate)/cfg.spins;   // 1回転あたり消費玉
@@ -663,7 +702,7 @@ function onMachineChange(){
 }
 
 function renderSpec(mc){
-  const pr = mc.payoutRate ?? 1;
+  const pr = mc.payoutRate ?? DEFAULT_PAYOUT_RATE;
   let html = "";
   Object.entries(mc.modes).forEach(([key,m])=>{
     const lim = m.limit ? m.limit+"回転で終了 → "+(mc.modes[m.onLimit||mc.startMode].label) : "回転数上限なし";
@@ -675,7 +714,8 @@ function renderSpec(mc){
     });
     html += "</table>";
   });
-  html += `<div class="note">出玉増減率 ×${pr}　／　出玉上限 ${mc.ballCap?num(mc.ballCap)+"発":"なし"}</div>`;
+  html += `<div class="note">出玉増減率 ×${pr}（${num((pr-1)*100,1)}%）${mc.payoutRate==null?"＝全機種共通":"＝この機種のみ個別指定"}`
+        + `　／　出玉上限 ${mc.ballCap?num(mc.ballCap)+"発":"なし"}</div>`;
   $("specBody").innerHTML = html;
 }
 
