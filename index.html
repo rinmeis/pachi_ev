@@ -312,9 +312,13 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.10.0";
+const VERSION = "ver.1.11.0";
 
 const CHANGELOG = [
+  { v:"ver.1.11.0", date:"2026-07-28", items:[
+    "機種追加：eリコリス・リコイルM3（通常1/259.7／ST132回転・1/97.1）",
+    "ST中にモードA・Bの2段階を持つ機種を、モード遷移モデルのまま表現できることを確認"
+  ]},
   { v:"ver.1.10.0", date:"2026-07-28", items:[
     "機種追加：e東京喰種W（通常1/199／RUSH 1/95.3・130回転）",
     "電サポ中の出玉増減 −5% を全機種共通の既定値に変更（従来はRe:ゼロ2のみ）",
@@ -463,6 +467,52 @@ const MACHINES = [
       hits:[
         {rate:0.97, balls:3000, next:"rush"},
         {rate:0.03, balls:6000, next:"rush"}
+      ]
+    }
+  }
+},
+{
+  id:"lycoreco_m3",
+  name:"eリコリス・リコイルM3",
+  note:"通常時1/259.7 ／ 右打ち中1/97.1・ST132回転 ／ モードA・Bの2段階＋LT",
+  lendYen:500, lendBalls:125,
+  ballCap:100000,
+  startMode:"normal",
+  modes:{
+    normal:{
+      label:"通常（左打ち）", prob:1/259.7, limit:null, onLimit:null, consumesBalls:true,
+      // ST突入分（計50%）は「70%モードA／30%モードB」に割ってから書いている
+      hits:[
+        {rate:0.200,       balls:310,  next:"normal"},   // ST無し
+        {rate:0.300,       balls:600,  next:"normal"},   // ST無し
+        {rate:0.050*0.70,  balls:310,  next:"modeA"},
+        {rate:0.050*0.30,  balls:310,  next:"modeB"},
+        {rate:0.449*0.70,  balls:600,  next:"modeA"},
+        {rate:0.449*0.30,  balls:600,  next:"modeB"},
+        {rate:0.001*0.70,  balls:1500, next:"modeA"},
+        {rate:0.001*0.30,  balls:1500, next:"modeB"}
+      ]
+    },
+    modeA:{
+      label:"ST132回転 モードA", prob:1/97.1, limit:132, onLimit:"normal", consumesBalls:false,
+      hits:[
+        {rate:0.50, balls:750, next:"modeA"},
+        {rate:0.50, balls:750, next:"modeB"}    // モードB昇格
+      ]
+    },
+    modeB:{
+      label:"ST132回転 モードB", prob:1/97.1, limit:132, onLimit:"normal", consumesBalls:false,
+      hits:[
+        {rate:0.50, balls:3000, next:"modeA"},  // モードA降格
+        {rate:0.25, balls:6000, next:"modeA"},  // 6000個のうち半分はそのまま降格
+        {rate:0.25, balls:6000, next:"lt"}      // 6000個のうち半分がLT突入
+      ]
+    },
+    lt:{
+      label:"LT（3000個ループ）", prob:1/97.1, limit:null, onLimit:null, consumesBalls:false,
+      hits:[
+        {rate:0.50, balls:3000, next:"lt"},
+        {rate:0.50, balls:0,    next:"modeA"}   // 非継続。出玉なしでモードAのSTへ
       ]
     }
   }
