@@ -69,6 +69,7 @@ button.go:disabled{opacity:.5;}
 .kpi .k{font-size:11px;color:var(--sub);}
 .kpi .v{font-size:19px;font-weight:700;letter-spacing:-.01em;margin-top:2px;}
 .kpi .v small{font-size:12px;font-weight:500;color:var(--sub);margin-left:2px;}
+.kpi .r{font-size:11px;color:var(--sub);margin-top:3px;line-height:1.4;}
 .kpi.wide{grid-column:1 / -1;}
 .plus{color:var(--plus);} .minus{color:var(--minus);}
 .chartbox{position:relative;height:260px;}
@@ -194,10 +195,12 @@ details .inner{margin-top:10px;}
       <div class="kpi">
         <div class="k">ボーダー（持ち玉）</div>
         <div class="v" id="kBorder">-</div>
+        <div class="r" id="kBorderR"></div>
       </div>
       <div class="kpi">
         <div class="k">ボーダー（現金）</div>
         <div class="v" id="kBorderCash">-</div>
+        <div class="r" id="kBorderCashR"></div>
       </div>
       <div class="kpi">
         <div class="k">初当たり期待出玉</div>
@@ -282,7 +285,8 @@ details .inner{margin-top:10px;}
     <summary>計算の前提</summary>
     <div class="inner note" style="margin-top:0;">
       ・電サポ（右打ち）中は玉が減らないものとして扱います。<br>
-      ・電サポ中の出玉増減として、全機種の大当たり出玉に −5%（×0.95）を掛けています。機種ごとに変えたい場合はその機種の payoutRate に個別の値を書きます。<br>
+      ・電サポ中の出玉増減として、全機種の大当たり出玉に −7%（×0.93）を掛けています。機種ごとに変えたい場合はその機種の payoutRate に個別の値を書きます。<br>
+      ・ボーダーには ±2.5% の幅を併記しています。出玉増減率や電サポ中の玉減りの見込み方はサイトや算出者によって差があり、ボーダーは1点で決まる値ではないためです。<br>
       ・出玉上限は「到達後は次の当たりが付かない」ルールとして扱います。上限に達した大当たり自体の出玉は満額もらえるので、累計は上限を大当たり1回分ぶん超えることがあります。時間切れ後に連チャンを消化する場合も同じです。<br>
       ・理論値の現金比率は「1サイクルで必要な玉のうち前回出玉で足りない分を現金購入」という近似です。これは資金が無制限にある前提なので、予算が有限な試行の平均は理論値より下に出ます（予算を増やすと一致していきます）。<br>
       ・出玉上限がある機種では、理論値より試行結果を信頼してください。<br>
@@ -312,9 +316,14 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.11.2";
+const VERSION = "ver.1.12.0";
 
 const CHANGELOG = [
+  { v:"ver.1.12.0", date:"2026-07-28", items:[
+    "電サポ中の出玉増減の既定値を −5% から −7% に変更（全機種）",
+    "ボーダーに ±2.5% の幅を併記",
+    "この変更で等価ボーダーは Re:ゼロ2 15.6→16.0、e東京喰種W 16.3→16.6、eリコリス・リコイルM3 16.5→16.9 になる"
+  ]},
   { v:"ver.1.11.2", date:"2026-07-28", items:[
     "修正：Re:ゼロ2もLT突入時に確定でもらえる300発が計算に入っていなかった（ver.1.11.1のリコリスと同じ誤り）",
     "初当たり期待出玉 2,022発→2,063発、等価ボーダー 15.9→15.6回転/1k"
@@ -411,7 +420,10 @@ const CHANGELOG = [
    ========================================================= */
 
 // 電サポ中の出玉増減。全機種に適用する（機種側で payoutRate を書けば上書き）
-const DEFAULT_PAYOUT_RATE = 0.95;   // −5%
+const DEFAULT_PAYOUT_RATE = 0.93;   // −7%
+
+// ボーダーに併記する幅。出玉増減率の見込み方で±この程度は動くため
+const BORDER_BAND = 0.025;   // ±2.5%
 
 const MACHINES = [
 {
@@ -996,6 +1008,10 @@ function run(){
   $("kEv").className = cls(ev1000);
   $("kBorder").innerHTML = num(borderHold,1) + `<small>回転/${ulab}</small>`;
   $("kBorderCash").innerHTML = num(borderCash,1) + `<small>回転/${ulab}</small>`;
+  // ボーダーは前提の置き方で動くので ±2.5% の幅も出す
+  const band = b => `−2.5% ${num(b*(1-BORDER_BAND),1)}<br>+2.5% ${num(b*(1+BORDER_BAND),1)}`;
+  $("kBorderR").innerHTML     = band(borderHold);
+  $("kBorderCashR").innerHTML = band(borderCash);
   $("kG").innerHTML = num(theory.G,0) + '<small>発</small>';
   $("kC").innerHTML = num(c,2) + '<small>玉</small>';
 
