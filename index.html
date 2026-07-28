@@ -296,7 +296,7 @@ details .inner{margin-top:10px;}
       ・電サポ（右打ち）中は玉が減らないものとして扱います。<br>
       ・電サポ中の出玉増減として、全機種の大当たり出玉に −7%（×0.93）を掛けています。機種ごとに変えたい場合はその機種の payoutRate に個別の値を書きます。<br>
       ・ボーダーには「上下2.5%除外」の値を併記しています。初当たり1回あたりの出玉を2万回シミュレートし、出玉の多い側2.5%と少ない側2.5%を除いた平均から算出したものです。この手の機種は出玉が極端に偏っていて（中央値は数百発、価値の大半は少数の大連チャン）平均が運の良い側に引っ張られるため、大連チャンを引けなかった場合のボーダーとして参考にしてください。<br>
-      ・出玉上限は「到達後は次の当たりが付かない」ルールとして扱います。上限に達した大当たり自体の出玉は満額もらえるので、累計は上限を大当たり1回分ぶん超えることがあります。時間切れ後に連チャンを消化する場合も同じです。<br>
+      ・出玉上限は<b>セッション合計</b>で判定し、到達したらその時点で打ち止め（試行終了）にします。「到達後は次の当たりが付かない」ルールなので、上限に達した大当たり自体の出玉は満額もらえます。そのため合計は上限を大当たり1回分ぶん超えることがあります。<br>
       ・理論値の現金比率は「1サイクルで必要な玉のうち前回出玉で足りない分を現金購入」という近似です。これは資金が無制限にある前提なので、予算が有限な試行の平均は理論値より下に出ます（予算を増やすと一致していきます）。<br>
       ・出玉上限がある機種では、理論値より試行結果を信頼してください。<br>
       ・玉は必要量だけ都度購入する扱い（500円単位などの丸めなし）です。<br>
@@ -325,9 +325,13 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.13.0";
+const VERSION = "ver.1.14.0";
 
 const CHANGELOG = [
+  { v:"ver.1.14.0", date:"2026-07-28", items:[
+    "出玉上限の判定を「1連チャンあたり」から「セッション合計」に変更。到達したらその時点で打ち止め（試行終了）",
+    "詳細の終了理由に「出玉上限で終了」を追加し、「セッション合計出玉の最大」も表示"
+  ]},
   { v:"ver.1.13.0", date:"2026-07-28", items:[
     "ボーダーの±2.5%表示を「上下2.5%除外のトリム平均から出したボーダー」に変更（初当たり出玉を2万回シミュレートして算出）",
     "終了条件を「通常時回転数」でも指定できるよう変更。既定は通常時2,000回転",
@@ -429,7 +433,7 @@ const CHANGELOG = [
      hits          当選時の振り分け [{rate, balls, next}]（rate合計=1）
    機種直下:
      payoutRate    出玉増減率。省略すると全機種共通の DEFAULT_PAYOUT_RATE
-     ballCap       1連チャンあたりの出玉上限（null＝なし）
+     ballCap       セッション合計の出玉上限。到達したら打ち止め（null＝なし）
      yutime        遊タイム。使うときは startMode に limit / onLimit を設定
    ========================================================= */
 
@@ -783,19 +787,20 @@ function runTrial(mc, cfg, hist){
       if(mode===root){ firstHits++; rec(); }   // 初当たり直前の水準を残す
       let r=Math.random(), acc=0, hit=m.hits[m.hits.length-1];
       for(const h of m.hits){ acc+=h.rate; if(r<acc){ hit=h; break; } }
-      /* 出玉上限は「到達後は次の当たりが付かない」ルール。
-         その大当たり自体の出玉は満額もらえるので途中では切らない。
-         結果として累計は上限を大当たり1回分ぶん超えることがある。 */
       const gain = hit.balls*pr;
       balls += gain; chain += gain; gained += gain;
       sec += gain*SEC_PER_BALL;
       if(chain > maxChain) maxChain = chain;
       let next = hit.next;
-      if(chain >= cap){ next = root; capHits++; }
       if(next===root) chain = 0;
       if(next!==mode) enters[next] = (enters[next]||0)+1;
       mode = next; modeSpins = 0;
       rec(); lastRec = normalSpins;   // 出玉を反映（横軸は進まないので縦に伸びる）
+
+      /* 出玉上限はセッション合計で判定する。「到達後は次の当たりが付かない」
+         ルールなので、その大当たり自体の出玉は満額もらってから打ち止め。
+         結果として合計は上限を大当たり1回分ぶん超えることがある。 */
+      if(gained >= cap){ endReason = "cap"; capHits++; break; }
     } else if(m.limit && modeSpins >= m.limit){
       const next = m.onLimit || root;
       if(next===root) chain = 0;
@@ -861,7 +866,7 @@ function renderSpec(mc){
     html += "</table>";
   });
   html += `<div class="note">出玉増減率 ×${pr}（${num((pr-1)*100,1)}%）${mc.payoutRate==null?"＝全機種共通":"＝この機種のみ個別指定"}`
-        + `　／　出玉上限 ${mc.ballCap?num(mc.ballCap)+"発":"なし"}</div>`;
+        + `　／　出玉上限 ${mc.ballCap?num(mc.ballCap)+"発（セッション合計）":"なし"}</div>`;
   $("specBody").innerHTML = html;
 }
 
@@ -1104,7 +1109,7 @@ function run(){
   // 試行
   const profits = [], histories = [];
   let sSpins=0, sNormal=0, sFirst=0, sTotal=0, sCash=0, sTimeUp=0, sHours=0, sGained=0;
-  let sOver=0, nOver=0, maxChainAll=0, sCapHits=0;
+  let sOver=0, nOver=0, maxChainAll=0, sCapHits=0, sBudgetEnd=0, maxTotalGained=0;
   const sEnters = {};
   for(let i=0;i<cfg.trials;i++){
     const hist = i < 30 ? [{x:0,y:0}] : null;
@@ -1114,7 +1119,9 @@ function run(){
     sSpins += r.spins; sNormal += r.normalSpins;
     sFirst += r.firstHits; sTotal += r.totalHits; sCash += r.cash; sHours += r.hours;
     sGained += r.gained;
-    if(r.endReason === "time") sTimeUp++;
+    if(r.endReason === "time")   sTimeUp++;
+    if(r.endReason === "budget") sBudgetEnd++;
+    if(r.gained > maxTotalGained) maxTotalGained = r.gained;
     sOver += r.overtime;
     if(r.overtime > 0) nOver++;
     if(r.maxChain > maxChainAll) maxChainAll = r.maxChain;
@@ -1154,14 +1161,15 @@ function run(){
   dt += `<tr><td>総大当たり回数</td><td>${num(sTotal/cfg.trials,2)}回</td></tr>`;
   dt += `<tr><td>実際の投資額</td><td>${num(sCash/cfg.trials,0)}円</td></tr>`;
   dt += `<tr><td>実際の遊技時間</td><td>${num(sHours/cfg.trials,1)}時間</td></tr>`;
-  dt += `<tr><td>時間切れで終了</td><td>${num(sTimeUp/cfg.trials*100,1)}%</td></tr>`;
-  dt += `<tr><td>予算切れで終了</td><td>${num((1-sTimeUp/cfg.trials)*100,1)}%</td></tr>`;
+  dt += `<tr><td>${cfg.stopMode==="spins"?"回転数上限":"時間切れ"}で終了</td><td>${num(sTimeUp/cfg.trials*100,1)}%</td></tr>`;
+  dt += `<tr><td>予算切れで終了</td><td>${num(sBudgetEnd/cfg.trials*100,1)}%</td></tr>`;
+  dt += `<tr><td>出玉上限で終了</td><td>${num(sCapHits/cfg.trials*100,1)}%</td></tr>`;
   dt += `<tr><td>上限到達後に連チャン消化</td><td>${num(overPct,1)}%（平均${overUnit(nOver>0 ? sOver/nOver : 0)}）</td></tr>`;
   dt += `<tr><td>初当たり1回あたり出玉（実測）</td><td>${num(realG,0)}発</td></tr>`;
   dt += `<tr><td>同（理論値）</td><td>${num(theory.G,0)}発</td></tr>`;
   dt += `<tr><td>実測と理論の差</td><td>${num(lossG,0)}発</td></tr>`;
-  dt += `<tr><td>最大連チャン出玉（全試行中）</td><td>${num(maxChainAll,0)}発</td></tr>`;
-  dt += `<tr><td>出玉上限に到達</td><td>${mc.ballCap ? `${num(sCapHits)}回（上限${num(mc.ballCap)}発）` : "上限なし"}</td></tr>`;
+  dt += `<tr><td>セッション合計出玉の最大</td><td>${num(maxTotalGained,0)}発${mc.ballCap?`（上限${num(mc.ballCap)}発）`:"（上限なし）"}</td></tr>`;
+  dt += `<tr><td>最大連チャン出玉（参考）</td><td>${num(maxChainAll,0)}発</td></tr>`;
   Object.entries(sEnters).forEach(([k,v])=>{
     if(k===mc.startMode) return;
     dt += `<tr><td>${mc.modes[k].label} 突入回数</td><td>${num(v/cfg.trials,2)}回</td></tr>`;
