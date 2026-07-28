@@ -312,9 +312,13 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.11.0";
+const VERSION = "ver.1.11.1";
 
 const CHANGELOG = [
+  { v:"ver.1.11.1", date:"2026-07-28", items:[
+    "修正：eリコリス・リコイルM3のLT突入時、確定でもらえる3000個が計算に入っていなかった（モードBの25%は最低9000個）",
+    "初当たり期待出玉 3,586発→3,927発、等価ボーダー 18.1→16.5回転/1k"
+  ]},
   { v:"ver.1.11.0", date:"2026-07-28", items:[
     "機種追加：eリコリス・リコイルM3（通常1/259.7／ST132回転・1/97.1）",
     "ST中にモードA・Bの2段階を持つ機種を、モード遷移モデルのまま表現できることを確認"
@@ -503,15 +507,18 @@ const MACHINES = [
     modeB:{
       label:"ST132回転 モードB", prob:1/97.1, limit:132, onLimit:"normal", consumesBalls:false,
       hits:[
-        {rate:0.50, balls:3000, next:"modeA"},  // モードA降格
-        {rate:0.25, balls:6000, next:"modeA"},  // 6000個のうち半分はそのまま降格
-        {rate:0.25, balls:6000, next:"lt"}      // 6000個のうち半分がLT突入
+        {rate:0.50, balls:3000, next:"modeA"},       // モードA降格
+        {rate:0.25, balls:6000, next:"modeA"},       // 6000個のうち半分はそのまま降格
+        // 6000個のうち半分がLT突入。突入した時点で3000個は確定でもらえるので
+        // 6000+3000=9000個を当たりに含める（以降のループぶんはltモードで加算）
+        {rate:0.25, balls:6000+3000, next:"lt"}
       ]
     },
     lt:{
+      // 突入時の3000個は modeB 側の当たりに含めてある。ここは2回目以降のループ
       label:"LT（3000個ループ）", prob:1/97.1, limit:null, onLimit:null, consumesBalls:false,
       hits:[
-        {rate:0.50, balls:3000, next:"lt"},
+        {rate:0.50, balls:3000, next:"lt"},     // ループ継続
         {rate:0.50, balls:0,    next:"modeA"}   // 非継続。出玉なしでモードAのSTへ
       ]
     }
