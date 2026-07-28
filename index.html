@@ -165,17 +165,25 @@ details .inner{margin-top:10px;}
 
   <div class="row">
     <div class="field">
-      <label>遊技時間（時間）</label>
-      <input id="hours" type="number" inputmode="decimal" value="8" step="0.5">
+      <label>終了条件</label>
+      <select id="stopMode">
+        <option value="spins" selected>通常時回転数</option>
+        <option value="hours">遊技時間</option>
+      </select>
     </div>
     <div class="field">
-      <label>試行回数</label>
-      <select id="trials">
+      <label id="stopLabel">回転数</label>
+      <input id="stopValue" type="number" inputmode="decimal" value="2000" step="100">
+    </div>
+  </div>
+
+  <div class="field">
+    <label>試行回数</label>
+    <select id="trials">
       <option value="200">200回（速い）</option>
       <option value="500" selected>500回</option>
       <option value="2000">2000回（精度重視・やや重い）</option>
-      </select>
-    </div>
+    </select>
   </div>
   <div class="note" id="hoursNote"></div>
 </div>
@@ -205,6 +213,7 @@ details .inner{margin-top:10px;}
       <div class="kpi">
         <div class="k">初当たり期待出玉</div>
         <div class="v" id="kG">-<small>発</small></div>
+        <div class="r" id="kGR"></div>
       </div>
       <div class="kpi">
         <div class="k">1回転の必要玉</div>
@@ -286,7 +295,7 @@ details .inner{margin-top:10px;}
     <div class="inner note" style="margin-top:0;">
       ・電サポ（右打ち）中は玉が減らないものとして扱います。<br>
       ・電サポ中の出玉増減として、全機種の大当たり出玉に −7%（×0.93）を掛けています。機種ごとに変えたい場合はその機種の payoutRate に個別の値を書きます。<br>
-      ・ボーダーには ±2.5% の幅を併記しています。出玉増減率や電サポ中の玉減りの見込み方はサイトや算出者によって差があり、ボーダーは1点で決まる値ではないためです。<br>
+      ・ボーダーには「上下2.5%除外」の値を併記しています。初当たり1回あたりの出玉を2万回シミュレートし、出玉の多い側2.5%と少ない側2.5%を除いた平均から算出したものです。この手の機種は出玉が極端に偏っていて（中央値は数百発、価値の大半は少数の大連チャン）平均が運の良い側に引っ張られるため、大連チャンを引けなかった場合のボーダーとして参考にしてください。<br>
       ・出玉上限は「到達後は次の当たりが付かない」ルールとして扱います。上限に達した大当たり自体の出玉は満額もらえるので、累計は上限を大当たり1回分ぶん超えることがあります。時間切れ後に連チャンを消化する場合も同じです。<br>
       ・理論値の現金比率は「1サイクルで必要な玉のうち前回出玉で足りない分を現金購入」という近似です。これは資金が無制限にある前提なので、予算が有限な試行の平均は理論値より下に出ます（予算を増やすと一致していきます）。<br>
       ・出玉上限がある機種では、理論値より試行結果を信頼してください。<br>
@@ -316,9 +325,14 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.12.0";
+const VERSION = "ver.1.13.0";
 
 const CHANGELOG = [
+  { v:"ver.1.13.0", date:"2026-07-28", items:[
+    "ボーダーの±2.5%表示を「上下2.5%除外のトリム平均から出したボーダー」に変更（初当たり出玉を2万回シミュレートして算出）",
+    "終了条件を「通常時回転数」でも指定できるよう変更。既定は通常時2,000回転",
+    "初当たり期待出玉にもトリム平均を併記"
+  ]},
   { v:"ver.1.12.0", date:"2026-07-28", items:[
     "電サポ中の出玉増減の既定値を −5% から −7% に変更（全機種）",
     "ボーダーに ±2.5% の幅を併記",
@@ -660,6 +674,56 @@ function evPer1000(theory, cfg, spins){
   return perCycle * (1000/theory.N);
 }
 
+/* ============ 初当たり1回あたりの出玉分布 ============
+   ボーダーは平均出玉から出すが、この手の機種は出玉が極端に偏っていて
+   （中央値は数百発、価値の大半は少数の大連チャン）、平均は運の良い側に
+   引っ張られる。上下 BORDER_BAND ぶんを除いたトリム平均も併記し、
+   「大連チャンを引けなかった場合のボーダー」を見えるようにする。      */
+// 出玉分布の裾が重いので、表示桁（小数1位）が安定する程度の件数が要る
+const TRIM_SAMPLES = 100000;
+
+// 通常で1回当たってから、通常に戻るまでの獲得出玉を1件とする
+function cyclePayouts(mc, K){
+  const pr   = mc.payoutRate ?? DEFAULT_PAYOUT_RATE;
+  const cap  = mc.ballCap || Infinity;
+  const root = mc.startMode;
+  const out  = new Array(K);
+  for(let i=0;i<K;i++){
+    let balls=0, chain=0, mode=root, modeSpins=0, first=true, guard=0;
+    while(guard++ < 200000){
+      const m = mc.modes[mode];
+      if(first || Math.random() < m.prob){
+        first = false;
+        let r=Math.random(), acc=0, hit=m.hits[m.hits.length-1];
+        for(const h of m.hits){ acc+=h.rate; if(r<acc){ hit=h; break; } }
+        const gain = hit.balls*pr;
+        balls += gain; chain += gain;
+        let next = hit.next;
+        if(chain >= cap) next = root;
+        mode = next; modeSpins = 0;
+        if(next === root) break;
+      }else{
+        modeSpins++;
+        if(m.limit && modeSpins >= m.limit){
+          const next = m.onLimit || root;
+          mode = next; modeSpins = 0;
+          if(next === root) break;
+        }
+      }
+    }
+    out[i] = balls;
+  }
+  return out;
+}
+
+// 上下 band ぶんを除いた平均
+function trimmedMeanPayout(mc, band){
+  const d = cyclePayouts(mc, TRIM_SAMPLES).sort((a,b)=>a-b);
+  const lo = Math.floor(d.length*band), hi = Math.ceil(d.length*(1-band));
+  let s=0; for(let i=lo;i<hi;i++) s += d[i];
+  return s/(hi-lo);
+}
+
 /* ============ モンテカルロ試行 ============ */
 // 遊技時間の消化速度（秒）
 const SEC_NORMAL  = 14.4;   // 通常時1回転（≒250回転/時）
@@ -678,6 +742,11 @@ function runTrial(mc, cfg, hist){
   const enters = {};
   let sec = 0;
   const maxSec = cfg.hours*3600;
+  // 終了条件。通常時回転数で切るか、遊技時間で切るか
+  const stopBySpins = cfg.stopMode === "spins";
+  const overLimit = () => stopBySpins ? (normalSpins >= cfg.maxNormalSpins) : (sec >= maxSec);
+  // 上限に達したあと、連チャン消化のために余分に回した回転数
+  let limitHit = false, overRun = 0;
 
   /* 収支推移の記録。横軸は通常時の回転数だけを数える。
      電サポ中は横軸が進まないので、連チャンの出玉は縦の立ち上がりとして描かれる。 */
@@ -692,8 +761,9 @@ function runTrial(mc, cfg, hist){
      RUSH／LT中に時間が来ても、通常に戻るまでは連チャンを最後まで消化する。 */
   while(spins < 500000){
     const m = mc.modes[mode];
+    if(!limitHit && overLimit()) limitHit = true;
     if(m.consumesBalls){
-      if(sec >= maxSec){ endReason="time"; break; }
+      if(limitHit){ endReason="time"; break; }
       if(balls < bps){
         const cost = (bps-balls)*cfg.lendRate;
         if(cash+cost > cfg.budget+1e-9){ endReason="budget"; break; }
@@ -704,6 +774,7 @@ function runTrial(mc, cfg, hist){
       sec += SEC_NORMAL;
     } else {
       sec += SEC_DENSUP;
+      if(limitHit) overRun++;   // 上限後も連チャンを消化している
     }
     spins++; modeSpins++;
 
@@ -740,8 +811,7 @@ function runTrial(mc, cfg, hist){
   return {
     profit: balls*cfg.exRate - cash,
     cash, spins, normalSpins, firstHits, totalHits, enters, endReason,
-    // 連チャン消化のために設定時間を超えた分
-    overtime: Math.max(0, sec/3600 - cfg.hours),
+    overtime: overRun,   // 上限到達後、連チャン消化のために回した電サポ回転数
     gained, maxChain, capHits, hours: sec/3600, finalBalls: balls
   };
 }
@@ -955,35 +1025,46 @@ function exRate(){
   return NaN;
 }
 
-const UNLIMITED_HOURS = 100000;   // 遊技時間0＝時間無制限（理論値の検証用）
+const UNLIMITED_HOURS  = 100000;    // 0を入れたときの実質無制限
+const UNLIMITED_SPINS  = 5000000;
 
 function readConfig(){
-  const h = parseFloat($("hours").value);
+  const v    = parseFloat($("stopValue").value);
+  const mode = $("stopMode").value;
   return {
-    hoursInput: h,
-    unlimited: !(h > 0),
+    stopMode: mode,
+    stopInput: v,
+    unlimited: !(v > 0),
     lendRate: lendRate(),
     exRate: exRate(),
     unitYen: unitYen(),
     spins: parseFloat($("spins1k").value),
     budget: parseFloat($("budget").value),
-    hours: (h > 0) ? h : UNLIMITED_HOURS,
+    hours: (mode==="hours" && v>0) ? v : UNLIMITED_HOURS,
+    maxNormalSpins: (mode==="spins" && v>0) ? v : UNLIMITED_SPINS,
     trials: parseInt($("trials").value,10)
   };
 }
 
 function updateHoursNote(){
-  const h = parseFloat($("hours").value);
-  if(isNaN(h)){ $("hoursNote").textContent = ""; return; }
-  $("hoursNote").textContent = h>0
-    ? `終了条件：${num(h,1)}時間か予算切れの早いほう。ただしRUSH／LT中に時間が来た場合は通常に戻るまで打ち切りません。終了時に残玉を換金します（通常${num(3600/SEC_NORMAL)}回転/時・電サポ${num(3600/SEC_DENSUP)}回転/時で消化）。`
-    : `時間無制限：予算を使い切るまで打ち続けます。理論値の検証用で、実戦の想定ではありません。`;
+  const v = parseFloat($("stopValue").value);
+  const spinsMode = $("stopMode").value === "spins";
+  $("stopLabel").textContent = spinsMode ? "回転数" : "時間";
+  $("stopValue").step = spinsMode ? 100 : 0.5;
+  if(isNaN(v)){ $("hoursNote").textContent = ""; return; }
+  if(!(v > 0)){
+    $("hoursNote").textContent = "無制限：予算を使い切るまで打ち続けます。理論値の検証用で、実戦の想定ではありません。";
+    return;
+  }
+  $("hoursNote").textContent = spinsMode
+    ? `終了条件：通常時${num(v)}回転か予算切れの早いほう。電サポ中の回転は数えません。ただしRUSH／LT中に上限が来た場合は通常に戻るまで打ち切りません。終了時に残玉を換金します。`
+    : `終了条件：${num(v,1)}時間か予算切れの早いほう。ただしRUSH／LT中に時間が来た場合は通常に戻るまで打ち切りません。終了時に残玉を換金します（通常${num(3600/SEC_NORMAL)}回転/時・電サポ${num(3600/SEC_DENSUP)}回転/時で消化）。`;
 }
 
 function run(){
   const mc = currentMachine();
   const cfg = readConfig();
-  if(!(cfg.lendRate>0) || !(cfg.exRate>0) || !(cfg.spins>0) || !(cfg.budget>0) || isNaN(cfg.hoursInput)){
+  if(!(cfg.lendRate>0) || !(cfg.exRate>0) || !(cfg.spins>0) || !(cfg.budget>0) || isNaN(cfg.stopInput)){
     alert("入力値を確認してください。");
     return;
   }
@@ -1008,10 +1089,15 @@ function run(){
   $("kEv").className = cls(ev1000);
   $("kBorder").innerHTML = num(borderHold,1) + `<small>回転/${ulab}</small>`;
   $("kBorderCash").innerHTML = num(borderCash,1) + `<small>回転/${ulab}</small>`;
-  // ボーダーは前提の置き方で動くので ±2.5% の幅も出す
-  const band = b => `−2.5% ${num(b*(1-BORDER_BAND),1)}<br>+2.5% ${num(b*(1+BORDER_BAND),1)}`;
-  $("kBorderR").innerHTML     = band(borderHold);
-  $("kBorderCashR").innerHTML = band(borderCash);
+  // 上下2.5%を除いたトリム平均でのボーダー（大連チャンを引けなかった場合）
+  const gTrim = trimmedMeanPayout(mc, BORDER_BAND);
+  const cTrim = gTrim/theory.N;
+  const borderHoldTrim = (unit/cfg.lendRate)/cTrim;
+  const borderCashTrim = (unit/cfg.lendRate)/(cTrim*(cfg.exRate/cfg.lendRate));
+  const pct = Math.round(BORDER_BAND*100*10)/10;
+  $("kBorderR").innerHTML     = `上下${pct}%除外 ${num(borderHoldTrim,1)}`;
+  $("kBorderCashR").innerHTML = `上下${pct}%除外 ${num(borderCashTrim,1)}`;
+  $("kGR").innerHTML          = `上下${pct}%除外 ${num(gTrim,0)}発`;
   $("kG").innerHTML = num(theory.G,0) + '<small>発</small>';
   $("kC").innerHTML = num(c,2) + '<small>玉</small>';
 
@@ -1049,11 +1135,12 @@ function run(){
   // 理論値（時間無制限）と試行値の差の正体を明示する
   const realG = sFirst>0 ? sGained/sFirst : 0;
   const lossG = theory.G - realG;
-  const overPct = nOver/cfg.trials*100;
+  const overPct  = nOver/cfg.trials*100;
+  const overUnit = v => `${num(v,0)}回転`;
   $("gapNote").innerHTML =
     `初当たり1回あたりの出玉は<b>実測 ${num(realG,0)}発</b>（理論 ${num(theory.G,0)}発、差 ${num(lossG,0)}発）。`
-    + `時間切れになっても連チャンは最後まで消化するため、${num(overPct,1)}%の試行で`
-    + `平均 +${num(sOver/cfg.trials,2)}時間 の超過が出ています。`
+    + `上限に達しても連チャンは最後まで消化します（${num(overPct,1)}%の試行が該当し、`
+    + `その場合の追加消化は平均${overUnit(nOver>0 ? sOver/nOver : 0)}）。`
     + `<br><b>試行の平均が理論値より下に出る理由</b>：理論値は資金無制限の長期期待値です。`
     + `予算が少ないほど、優位性を回収し切る前に飛ぶ確率が上がります（予算を増やすと理論値に近づきます）。`;
 
@@ -1069,7 +1156,7 @@ function run(){
   dt += `<tr><td>実際の遊技時間</td><td>${num(sHours/cfg.trials,1)}時間</td></tr>`;
   dt += `<tr><td>時間切れで終了</td><td>${num(sTimeUp/cfg.trials*100,1)}%</td></tr>`;
   dt += `<tr><td>予算切れで終了</td><td>${num((1-sTimeUp/cfg.trials)*100,1)}%</td></tr>`;
-  dt += `<tr><td>連チャン消化で時間超過</td><td>${num(nOver/cfg.trials*100,1)}%（平均+${num(sOver/cfg.trials,2)}時間）</td></tr>`;
+  dt += `<tr><td>上限到達後に連チャン消化</td><td>${num(overPct,1)}%（平均${overUnit(nOver>0 ? sOver/nOver : 0)}）</td></tr>`;
   dt += `<tr><td>初当たり1回あたり出玉（実測）</td><td>${num(realG,0)}発</td></tr>`;
   dt += `<tr><td>同（理論値）</td><td>${num(theory.G,0)}発</td></tr>`;
   dt += `<tr><td>実測と理論の差</td><td>${num(lossG,0)}発</td></tr>`;
@@ -1223,7 +1310,12 @@ $("exCustom").addEventListener("input", updateExNote);
   $(id).addEventListener("change", ()=>{ onLendChanged(); convertSpinsToCurrent(); });
 });
 $("ratePreset").addEventListener("change", applyRatePreset);
-$("hours").addEventListener("input", updateHoursNote);
+$("stopValue").addEventListener("input", updateHoursNote);
+$("stopMode").addEventListener("change", ()=>{
+  // モードを切り替えたら既定値も入れ替える（回転数と時間で桁が違うため）
+  $("stopValue").value = $("stopMode").value === "spins" ? 2000 : 8;
+  updateHoursNote();
+});
 $("run").addEventListener("click", ()=>{
   const b = $("run");
   b.disabled = true; b.textContent = "計算中…";
