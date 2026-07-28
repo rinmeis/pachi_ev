@@ -203,17 +203,19 @@ details .inner{margin-top:10px;}
       <div class="kpi">
         <div class="k">ボーダー（持ち玉）</div>
         <div class="v" id="kBorder">-</div>
-        <div class="r" id="kBorderR"></div>
       </div>
       <div class="kpi">
         <div class="k">ボーダー（現金）</div>
         <div class="v" id="kBorderCash">-</div>
-        <div class="r" id="kBorderCashR"></div>
+      </div>
+      <div class="kpi wide">
+        <div class="k">ボーダー（収支の上下2.5%を除外）</div>
+        <div class="v" id="kBorderTrim">-</div>
+        <div class="r" id="kBorderTrimR"></div>
       </div>
       <div class="kpi">
         <div class="k">初当たり期待出玉</div>
         <div class="v" id="kG">-<small>発</small></div>
-        <div class="r" id="kGR"></div>
       </div>
       <div class="kpi">
         <div class="k">1回転の必要玉</div>
@@ -295,7 +297,7 @@ details .inner{margin-top:10px;}
     <div class="inner note" style="margin-top:0;">
       ・電サポ（右打ち）中は玉が減らないものとして扱います。<br>
       ・電サポ中の出玉増減として、全機種の大当たり出玉に −7%（×0.93）を掛けています。機種ごとに変えたい場合はその機種の payoutRate に個別の値を書きます。<br>
-      ・ボーダーには「上下2.5%除外」の値を併記しています。初当たり1回あたりの出玉を2万回シミュレートし、出玉の多い側2.5%と少ない側2.5%を除いた平均から算出したものです。この手の機種は出玉が極端に偏っていて（中央値は数百発、価値の大半は少数の大連チャン）平均が運の良い側に引っ張られるため、大連チャンを引けなかった場合のボーダーとして参考にしてください。<br>
+      ・「ボーダー（収支の上下2.5%を除外）」は、セッション収支の分布から大勝ち2.5%と大負け2.5%を除いた平均がちょうど±0になる回転数です。回転数を変えながら各点2,500回ずつ試行し、収支が負から正に変わる点を探して求めています。通常のボーダーは平均収支がゼロになる点ですが、この手の機種は少数の大連チャンが平均を作るため、平均は運の良い側に引っ張られます。極端な当たり外れを除いた損益分岐点として参考にしてください。<b>予算・終了条件・交換率の設定に依存する値</b>です。<br>
       ・出玉上限は<b>セッション合計</b>で判定し、到達したらその時点で打ち止め（試行終了）にします。「到達後は次の当たりが付かない」ルールなので、上限に達した大当たり自体の出玉は満額もらえます。そのため合計は上限を大当たり1回分ぶん超えることがあります。<br>
       ・理論値の現金比率は「1サイクルで必要な玉のうち前回出玉で足りない分を現金購入」という近似です。これは資金が無制限にある前提なので、予算が有限な試行の平均は理論値より下に出ます（予算を増やすと一致していきます）。<br>
       ・出玉上限がある機種では、理論値より試行結果を信頼してください。<br>
@@ -325,9 +327,13 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.14.0";
+const VERSION = "ver.1.15.0";
 
 const CHANGELOG = [
+  { v:"ver.1.15.0", date:"2026-07-28", items:[
+    "「上下2.5%除外」の算出方法を変更。初当たり出玉のトリム平均ではなく、セッション収支の大勝ち2.5%と大負け2.5%を除いた平均が±0になる回転数を探す方式にした",
+    "ボーダー（収支の上下2.5%を除外）を独立したKPIとして表示。予算・終了条件・交換率に依存する値であることを明記"
+  ]},
   { v:"ver.1.14.0", date:"2026-07-28", items:[
     "出玉上限の判定を「1連チャンあたり」から「セッション合計」に変更。到達したらその時点で打ち止め（試行終了）",
     "詳細の終了理由に「出玉上限で終了」を追加し、「セッション合計出玉の最大」も表示"
@@ -678,54 +684,44 @@ function evPer1000(theory, cfg, spins){
   return perCycle * (1000/theory.N);
 }
 
-/* ============ 初当たり1回あたりの出玉分布 ============
-   ボーダーは平均出玉から出すが、この手の機種は出玉が極端に偏っていて
-   （中央値は数百発、価値の大半は少数の大連チャン）、平均は運の良い側に
-   引っ張られる。上下 BORDER_BAND ぶんを除いたトリム平均も併記し、
-   「大連チャンを引けなかった場合のボーダー」を見えるようにする。      */
-// 出玉分布の裾が重いので、表示桁（小数1位）が安定する程度の件数が要る
-const TRIM_SAMPLES = 100000;
+/* ============ トリム収支ボーダー ============
+   通常のボーダーは平均収支がゼロになる点だが、この手の機種は収支分布が
+   極端に偏っていて（大半のセッションは負け、少数の大連チャンが平均を作る）、
+   平均は運の良い側に引っ張られる。
+   セッション収支の上下 BORDER_BAND ぶんを除いたトリム平均がゼロになる
+   回転数を探し、「極端な当たり外れを除いた損益分岐点」として併記する。
+   予算・終了条件・交換率に依存する値なので、試行と同じ cfg で計算する。  */
+// 粗い走査は区間を挟めれば十分だが、絞り込みは表示桁を左右するので厚く回す
+const TRIM_TRIALS_COARSE = 1500;
+const TRIM_TRIALS_FINE   = 7000;
 
-// 通常で1回当たってから、通常に戻るまでの獲得出玉を1件とする
-function cyclePayouts(mc, K){
-  const pr   = mc.payoutRate ?? DEFAULT_PAYOUT_RATE;
-  const cap  = mc.ballCap || Infinity;
-  const root = mc.startMode;
-  const out  = new Array(K);
-  for(let i=0;i<K;i++){
-    let balls=0, chain=0, mode=root, modeSpins=0, first=true, guard=0;
-    while(guard++ < 200000){
-      const m = mc.modes[mode];
-      if(first || Math.random() < m.prob){
-        first = false;
-        let r=Math.random(), acc=0, hit=m.hits[m.hits.length-1];
-        for(const h of m.hits){ acc+=h.rate; if(r<acc){ hit=h; break; } }
-        const gain = hit.balls*pr;
-        balls += gain; chain += gain;
-        let next = hit.next;
-        if(chain >= cap) next = root;
-        mode = next; modeSpins = 0;
-        if(next === root) break;
-      }else{
-        modeSpins++;
-        if(m.limit && modeSpins >= m.limit){
-          const next = m.onLimit || root;
-          mode = next; modeSpins = 0;
-          if(next === root) break;
-        }
-      }
-    }
-    out[i] = balls;
-  }
-  return out;
+function trimmedMeanProfit(mc, cfg, R, K, band){
+  const c = Object.assign({}, cfg, {spins:R});
+  const p = new Array(K);
+  for(let i=0;i<K;i++) p[i] = runTrial(mc, c, null).profit;
+  p.sort((a,b)=>a-b);
+  const lo = Math.floor(K*band), hi = Math.ceil(K*(1-band));
+  let s=0; for(let i=lo;i<hi;i++) s += p[i];
+  return s/(hi-lo);
 }
 
-// 上下 band ぶんを除いた平均
-function trimmedMeanPayout(mc, band){
-  const d = cyclePayouts(mc, TRIM_SAMPLES).sort((a,b)=>a-b);
-  const lo = Math.floor(d.length*band), hi = Math.ceil(d.length*(1-band));
-  let s=0; for(let i=lo;i<hi;i++) s += d[i];
-  return s/(hi-lo);
+// [lo,hi] を pts 点で走査し、収支が負→正に変わる区間を返す
+function scanZero(mc, cfg, lo, hi, pts, K, band){
+  const xs=[], ys=[];
+  for(let i=0;i<pts;i++){
+    const R = lo + (hi-lo)*i/(pts-1);
+    xs.push(R); ys.push(trimmedMeanProfit(mc, cfg, R, K, band));
+  }
+  for(let i=1;i<pts;i++) if(ys[i-1] <= 0 && ys[i] > 0) return [xs[i-1], xs[i], ys[i-1], ys[i]];
+  return null;
+}
+
+// 粗く走査してから区間を絞り込む（1点あたりの試行が重いので2段階）
+function trimmedBreakEven(mc, cfg, base, band){
+  const a = scanZero(mc, cfg, base*0.95, base*1.9, 6, TRIM_TRIALS_COARSE, band);
+  if(!a) return null;
+  const b = scanZero(mc, cfg, a[0], a[1], 5, TRIM_TRIALS_FINE, band) || a;
+  return b[0] + (b[1]-b[0])*(0-b[2])/(b[3]-b[2]);
 }
 
 /* ============ モンテカルロ試行 ============ */
@@ -1094,15 +1090,17 @@ function run(){
   $("kEv").className = cls(ev1000);
   $("kBorder").innerHTML = num(borderHold,1) + `<small>回転/${ulab}</small>`;
   $("kBorderCash").innerHTML = num(borderCash,1) + `<small>回転/${ulab}</small>`;
-  // 上下2.5%を除いたトリム平均でのボーダー（大連チャンを引けなかった場合）
-  const gTrim = trimmedMeanPayout(mc, BORDER_BAND);
-  const cTrim = gTrim/theory.N;
-  const borderHoldTrim = (unit/cfg.lendRate)/cTrim;
-  const borderCashTrim = (unit/cfg.lendRate)/(cTrim*(cfg.exRate/cfg.lendRate));
+  // 収支の上下2.5%を除いたトリム平均がゼロになる回転数
   const pct = Math.round(BORDER_BAND*100*10)/10;
-  $("kBorderR").innerHTML     = `上下${pct}%除外 ${num(borderHoldTrim,1)}`;
-  $("kBorderCashR").innerHTML = `上下${pct}%除外 ${num(borderCashTrim,1)}`;
-  $("kGR").innerHTML          = `上下${pct}%除外 ${num(gTrim,0)}発`;
+  const bTrim = trimmedBreakEven(mc, cfg, borderHold, BORDER_BAND);
+  $("kBorderTrim").innerHTML = bTrim
+    ? num(bTrim,1) + `<small>回転/${ulab}</small>`
+    : "算出できず";
+  $("kBorderTrimR").textContent = bTrim
+    ? `大勝ち${pct}%と大負け${pct}%を除いた収支が±0になる回転数。予算${num(cfg.budget)}円・`
+      + (cfg.stopMode==="spins" ? `通常時${num(cfg.maxNormalSpins)}回転` : `${num(cfg.hours,1)}時間`)
+      + `での値です。試行から求めるため再計算すると±0.3程度ぶれます。`
+    : `設定した範囲では収支が±0になる点が見つかりませんでした。`;
   $("kG").innerHTML = num(theory.G,0) + '<small>発</small>';
   $("kC").innerHTML = num(c,2) + '<small>玉</small>';
 
