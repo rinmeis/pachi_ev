@@ -378,9 +378,12 @@ details .inner{margin-top:10px;}
    （ver.1.16.1以降に適用。それ以前の機種追加はYを上げている）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.19.0";
+const VERSION = "ver.1.19.1";
 
 const CHANGELOG = [
+  { v:"ver.1.19.1", date:"2026-07-28", items:[
+    "e東京喰種Wの「RUSH抽選（1回）」モードの表示名を「喰種CHARGE昇格抽選」に変更（表示ラベルのみ、計算に影響なし）"
+  ]},
   { v:"ver.1.19.0", date:"2026-07-28", items:[
     "精度の選択肢に「最高精度（約10秒）」を追加"
   ]},
@@ -591,7 +594,7 @@ const MACHINES = [
     },
     charge:{
       // 300玉当たりのあとに1/95.3を1回引ければRUSHへ。外れれば通常に戻る
-      label:"RUSH抽選（1回）", prob:1/95.3, limit:1, onLimit:"normal", consumesBalls:false,
+      label:"喰種CHARGE昇格抽選", prob:1/95.3, limit:1, onLimit:"normal", consumesBalls:false,
       hits:[
         {rate:1.0, balls:0, next:"rush"}
       ]
