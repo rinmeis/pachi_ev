@@ -373,9 +373,12 @@ details .inner{margin-top:10px;}
    （ver.1.16.1以降に適用。それ以前の機種追加はYを上げている）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.16.3";
+const VERSION = "ver.1.17.0";
 
 const CHANGELOG = [
+  { v:"ver.1.17.0", date:"2026-07-28", items:[
+    "スペック詳細に各モードの継続率を表示（回転数上限のあるモードに「○回転で終了（継続率○%）」を併記）。全機種に自動適用"
+  ]},
   { v:"ver.1.16.3", date:"2026-07-28", items:[
     "修正：eソードアート・オンライン アリシゼーション 夜空のLTの振り分けを7段階（0/1500/3000/4500/6000/9000/12000発）に訂正。いずれも単発でWar of Underworldへ降格する仕様に変更（従来の50%継続/50%降格は誤り）"
   ]},
@@ -1100,7 +1103,9 @@ function renderSpec(mc){
   const pr = mc.payoutRate ?? DEFAULT_PAYOUT_RATE;
   let html = "";
   Object.entries(mc.modes).forEach(([key,m])=>{
-    const lim = m.limit ? m.limit+"回転で終了 → "+(mc.modes[m.onLimit||mc.startMode].label) : "回転数上限なし";
+    // 継続率 = 上限回転数以内に大当たりを引ける確率。ボーダー計算と同じ定義
+    const cont = m.limit ? `（継続率${num((1-Math.pow(1-m.prob,m.limit))*100,1)}%）` : "";
+    const lim = m.limit ? `${m.limit}回転で終了${cont} → ${mc.modes[m.onLimit||mc.startMode].label}` : "回転数上限なし";
     html += `<div class="mode-h">${m.label}</div>`;
     html += `<div class="note" style="margin-top:0;">確率 1/${num(1/m.prob,1)} ／ ${lim} ／ ${m.consumesBalls?"玉を消費":"電サポ（玉の消費なし）"}</div>`;
     html += "<table><tr><th>振り分け</th><th>出玉</th><th>実質</th><th>移行先</th></tr>";
