@@ -373,9 +373,12 @@ details .inner{margin-top:10px;}
    （ver.1.16.1以降に適用。それ以前の機種追加はYを上げている）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.17.0";
+const VERSION = "ver.1.17.1";
 
 const CHANGELOG = [
+  { v:"ver.1.17.1", date:"2026-07-28", items:[
+    "【サンプル】CHARGE＋LT搭載機を削除（実機データが揃ったため見本役を終了）"
+  ]},
   { v:"ver.1.17.0", date:"2026-07-28", items:[
     "スペック詳細に各モードの継続率を表示（回転数上限のあるモードに「○回転で終了（継続率○%）」を併記）。全機種に自動適用"
   ]},
@@ -679,45 +682,6 @@ const MACHINES = [
         {rate:0.044, balls:6000,  next:"warOfUnderworld"},
         {rate:0.015, balls:9000,  next:"warOfUnderworld"},  // DRIVE to BONUS
         {rate:0.010, balls:12000, next:"warOfUnderworld"}   // DRIVE in DRIVE
-      ]
-    }
-  }
-},
-{
-  id:"sample_charge",
-  name:"【サンプル】CHARGE＋LT搭載機 319ver.",
-  note:"数値は架空です。書式の見本として入れています",
-  lendYen:500, lendBalls:125,
-  ballCap:100000,
-  startMode:"normal",
-  modes:{
-    normal:{
-      label:"通常（左打ち）", prob:1/319, limit:null, onLimit:null, consumesBalls:true,
-      hits:[
-        {rate:0.45, balls:450,  next:"charge"},
-        {rate:0.55, balls:1500, next:"rush"}
-      ]
-    },
-    charge:{
-      label:"CHARGEゾーン", prob:1/50, limit:100, onLimit:"normal", consumesBalls:false,
-      hits:[
-        {rate:0.88, balls:300, next:"charge"},
-        {rate:0.12, balls:300, next:"rush"}
-      ]
-    },
-    rush:{
-      label:"RUSH", prob:1/99, limit:150, onLimit:"normal", consumesBalls:false,
-      hits:[
-        {rate:0.82, balls:1500, next:"rush"},
-        {rate:0.05, balls:1500, next:"lt"},
-        {rate:0.13, balls:1500, next:"normal"}
-      ]
-    },
-    lt:{
-      label:"LT", prob:1/99, limit:null, onLimit:null, consumesBalls:false,
-      hits:[
-        {rate:0.75, balls:1500, next:"lt"},
-        {rate:0.25, balls:1500, next:"rush"}
       ]
     }
   }
