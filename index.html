@@ -373,9 +373,12 @@ details .inner{margin-top:10px;}
    （ver.1.16.1以降に適用。それ以前の機種追加はYを上げている）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.16.2";
+const VERSION = "ver.1.16.3";
 
 const CHANGELOG = [
+  { v:"ver.1.16.3", date:"2026-07-28", items:[
+    "修正：eソードアート・オンライン アリシゼーション 夜空のLTの振り分けを7段階（0/1500/3000/4500/6000/9000/12000発）に訂正。いずれも単発でWar of Underworldへ降格する仕様に変更（従来の50%継続/50%降格は誤り）"
+  ]},
   { v:"ver.1.16.2", date:"2026-07-28", items:[
     "機種追加：eソードアート・オンライン アリシゼーション 夜空（通常1/199／右打ち中1/51.6、SWORD RUSH(ST53)→War of Underworld(ST70)→LTの3段階昇格）"
   ]},
@@ -660,12 +663,19 @@ const MACHINES = [
       ]
     },
     lt:{
-      // ぼくらの英雄／咲け、花たち／SWORD DRIVEはすべて同じ挙動なので1モードにまとめている。
-      // 「LT突入時取得出玉なし」なので、突入元の当たり(3000 or 1500)に追加は乗せない。
+      /* ぼくらの英雄／咲け、花たち／SWORD DRIVEはすべて同じ挙動なので1モードにまとめている。
+         「LT突入時取得出玉なし」なので、突入元の当たり(3000 or 1500)に追加は乗せない。
+         LTは1回当たると必ずここで確定し（限度回転数なし＝実質1発勝負）、
+         獲得量に関わらず必ずWar of Underworld(ST70回転)へ降格する。 */
       label:"LT（ぼくらの英雄／咲け、花たち／SWORD DRIVE）", prob:1/51.6, limit:null, onLimit:null, consumesBalls:false,
       hits:[
-        {rate:0.50, balls:1500, next:"lt"},               // 継続
-        {rate:0.50, balls:0,    next:"warOfUnderworld"}   // 非継続。War of Underworldへ降格
+        {rate:0.082, balls:0,     next:"warOfUnderworld"},
+        {rate:0.281, balls:1500,  next:"warOfUnderworld"},
+        {rate:0.361, balls:3000,  next:"warOfUnderworld"},
+        {rate:0.207, balls:4500,  next:"warOfUnderworld"},
+        {rate:0.044, balls:6000,  next:"warOfUnderworld"},
+        {rate:0.015, balls:9000,  next:"warOfUnderworld"},  // DRIVE to BONUS
+        {rate:0.010, balls:12000, next:"warOfUnderworld"}   // DRIVE in DRIVE
       ]
     }
   }
