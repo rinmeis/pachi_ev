@@ -97,6 +97,13 @@ details .inner{margin-top:10px;}
 .log .lv{font-size:12px;font-weight:700;color:var(--fg);}
 .log .ld{font-size:11px;color:var(--sub);margin-left:6px;font-weight:400;}
 .log ul{margin:4px 0 0;padding-left:16px;font-size:11px;color:var(--sub);line-height:1.8;}
+.prog{margin-top:10px;}
+.prog-bar{height:6px;background:var(--panel2);border-radius:99px;overflow:hidden;}
+.prog-fill{height:100%;width:0;background:var(--accent);transition:width .12s linear;}
+.prog-txt{font-size:11px;color:var(--sub);margin-top:5px;text-align:center;}
+.binrow{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.binrow label{margin:0;white-space:nowrap;}
+.binrow select{width:auto;flex:1;padding:6px 30px 6px 10px;font-size:14px;}
 .hidden{display:none;}
 .spec-note{font-size:12px;color:var(--sub);margin:-4px 0 10px;}
 .mode-h{font-size:12px;font-weight:700;margin:12px 0 4px;color:var(--fg);}
@@ -178,17 +185,21 @@ details .inner{margin-top:10px;}
   </div>
 
   <div class="field">
-    <label>試行回数</label>
-    <select id="trials">
-      <option value="200">200回（速い）</option>
-      <option value="500" selected>500回</option>
-      <option value="2000">2000回（精度重視・やや重い）</option>
+    <label>精度</label>
+    <select id="precision">
+      <option value="1">高速（約1秒）</option>
+      <option value="2" selected>標準（約2秒）</option>
+      <option value="5">高精度（約5秒）</option>
     </select>
   </div>
   <div class="note" id="hoursNote"></div>
 </div>
 
 <button class="go" id="run">計算する</button>
+<div class="prog hidden" id="prog">
+  <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+  <div class="prog-txt" id="progTxt"></div>
+</div>
 
 <!-- ===== 結果 ===== -->
 <div id="result" class="hidden">
@@ -236,6 +247,12 @@ details .inner{margin-top:10px;}
       <div class="kpi wide">
         <div class="k">平均収支</div>
         <div class="v" id="tMean">-</div>
+        <div class="r" id="tMeanR"></div>
+      </div>
+      <div class="kpi">
+        <div class="k">トリム平均収支</div>
+        <div class="v" id="tTrim">-</div>
+        <div class="r">上下2.5%を除外</div>
       </div>
       <div class="kpi">
         <div class="k">中央値</div>
@@ -244,6 +261,10 @@ details .inner{margin-top:10px;}
       <div class="kpi">
         <div class="k">勝率</div>
         <div class="v" id="tWin">-</div>
+      </div>
+      <div class="kpi">
+        <div class="k">標準偏差</div>
+        <div class="v" id="tSd">-</div>
       </div>
       <div class="kpi">
         <div class="k">下位5%</div>
@@ -263,6 +284,28 @@ details .inner{margin-top:10px;}
 
   <div class="card">
     <h2>収支の分布（ヒストグラム）</h2>
+    <div class="row">
+      <div class="field">
+        <label for="binW">刻み幅</label>
+        <select id="binW">
+          <option value="auto" selected>自動</option>
+          <option value="500">500円</option>
+          <option value="1000">1,000円</option>
+          <option value="2000">2,000円</option>
+          <option value="5000">5,000円</option>
+          <option value="10000">10,000円</option>
+          <option value="20000">20,000円</option>
+          <option value="50000">50,000円</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="yScale">縦軸の高さ</label>
+        <select id="yScale">
+          <option value="max" selected>最大の帯に合わせる</option>
+          <option value="second">2番目の帯に合わせる</option>
+        </select>
+      </div>
+    </div>
     <div class="chartbox"><canvas id="chartHist"></canvas></div>
     <div class="note" id="histNote"></div>
   </div>
@@ -327,9 +370,18 @@ details .inner{margin-top:10px;}
      機能追加・仕様変更  → Y を +1、Z を 0（1.1.1 → 1.2.0）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.15.0";
+const VERSION = "ver.1.16.0";
 
 const CHANGELOG = [
+  { v:"ver.1.16.0", date:"2026-07-28", items:[
+    "Web Workerによる並列化。runTrialを実行時に文字列化して注入するので本体との二重管理は発生しない。Worker非対応環境ではメインスレッドに自動フォールバック",
+    "試行回数の指定を「精度（高速1秒／標準2秒／高精度5秒）」に変更。端末性能によらず待ち時間が一定になる",
+    "計算中に進捗バーを表示",
+    "ヒストグラムの刻み幅を自動決定（切りのいい額から約30本）。手動指定も可能。表示範囲をp0.5〜p99.5に制限し、外れ値は端の帯にまとめる",
+    "ヒストグラムに収支0・平均・トリム平均の基準線を追加",
+    "縦軸を「2番目に高い帯」に合わせる切替を追加。1本が突出して他が潰れる分布でも読めるようにした。振り切れた帯には実際の値を表示する",
+    "試行結果に標準偏差とトリム平均収支を追加。平均収支には試行回数と95%精度を併記"
+  ]},
   { v:"ver.1.15.0", date:"2026-07-28", items:[
     "「上下2.5%除外」の算出方法を変更。初当たり出玉のトリム平均ではなく、セッション収支の大勝ち2.5%と大負け2.5%を除いた平均が±0になる回転数を探す方式にした",
     "ボーダー（収支の上下2.5%を除外）を独立したKPIとして表示。予算・終了条件・交換率に依存する値であることを明記"
@@ -692,35 +744,32 @@ function evPer1000(theory, cfg, spins){
    回転数を探し、「極端な当たり外れを除いた損益分岐点」として併記する。
    予算・終了条件・交換率に依存する値なので、試行と同じ cfg で計算する。  */
 // 粗い走査は区間を挟めれば十分だが、絞り込みは表示桁を左右するので厚く回す
-const TRIM_TRIALS_COARSE = 1500;
-const TRIM_TRIALS_FINE   = 7000;
-
-function trimmedMeanProfit(mc, cfg, R, K, band){
-  const c = Object.assign({}, cfg, {spins:R});
-  const p = new Array(K);
-  for(let i=0;i<K;i++) p[i] = runTrial(mc, c, null).profit;
-  p.sort((a,b)=>a-b);
-  const lo = Math.floor(K*band), hi = Math.ceil(K*(1-band));
+function trimMeanOf(arr, band){
+  const p = Array.from(arr).sort((a,b)=>a-b);
+  const lo = Math.floor(p.length*band), hi = Math.ceil(p.length*(1-band));
   let s=0; for(let i=lo;i<hi;i++) s += p[i];
   return s/(hi-lo);
 }
 
-// [lo,hi] を pts 点で走査し、収支が負→正に変わる区間を返す
-function scanZero(mc, cfg, lo, hi, pts, K, band){
-  const xs=[], ys=[];
+// [lo,hi] を pts 点で並列に走査し、収支が負→正に変わる区間を返す
+async function scanZero(mc, cfg, lo, hi, pts, K, band){
+  const xs = [], tasks = [];
   for(let i=0;i<pts;i++){
     const R = lo + (hi-lo)*i/(pts-1);
-    xs.push(R); ys.push(trimmedMeanProfit(mc, cfg, R, K, band));
+    xs.push(R);
+    tasks.push({mc, cfg: Object.assign({}, cfg, {spins:R}), M:K, full:false});
   }
+  const res = await poolRun(tasks);
+  const ys = res.map(r=> trimMeanOf(r.profits, band));
   for(let i=1;i<pts;i++) if(ys[i-1] <= 0 && ys[i] > 0) return [xs[i-1], xs[i], ys[i-1], ys[i]];
   return null;
 }
 
-// 粗く走査してから区間を絞り込む（1点あたりの試行が重いので2段階）
-function trimmedBreakEven(mc, cfg, base, band){
-  const a = scanZero(mc, cfg, base*0.95, base*1.9, 6, TRIM_TRIALS_COARSE, band);
+// 粗く走査してから区間を絞り込む。各点は並列に投げる
+async function trimmedBreakEven(mc, cfg, base, band, K){
+  const a = await scanZero(mc, cfg, base*0.95, base*1.9, 6, Math.round(K*0.4), band);
   if(!a) return null;
-  const b = scanZero(mc, cfg, a[0], a[1], 5, TRIM_TRIALS_FINE, band) || a;
+  const b = await scanZero(mc, cfg, a[0], a[1], 5, K, band) || a;
   return b[0] + (b[1]-b[0])*(0-b[2])/(b[3]-b[2]);
 }
 
@@ -815,6 +864,144 @@ function runTrial(mc, cfg, hist){
     overtime: overRun,   // 上限到達後、連チャン消化のために回した電サポ回転数
     gained, maxChain, capHits, hours: sec/3600, finalBalls: balls
   };
+}
+
+/* ============ 並列実行（Web Worker） ============
+   runTrial を toString() でそのまま注入するので、シミュレーション本体は
+   1箇所しか存在しない。Worker側にコピーを持たないので実装が食い違わない。
+   Workerが使えない環境ではメインスレッドのチャンク分割に自動で落ちる。   */
+const MAX_WORKERS = 6;    // スマホの発熱・電池を考えて上限を設ける
+
+function buildWorkerSource(){
+  return `const SEC_NORMAL=${SEC_NORMAL},SEC_DENSUP=${SEC_DENSUP},`
+    + `SEC_PER_BALL=${SEC_PER_BALL},DEFAULT_PAYOUT_RATE=${DEFAULT_PAYOUT_RATE};\n`
+    + runTrial.toString() + `
+onmessage = function(e){
+  var d = e.data, M = d.M, out = new Float64Array(M);
+  var a = {spins:0,normalSpins:0,firstHits:0,totalHits:0,cash:0,hours:0,gained:0,
+           overtime:0,nOver:0,timeUp:0,budgetEnd:0,capHits:0,maxChain:0,maxGained:0,enters:{}};
+  for(var i=0;i<M;i++){
+    var r = runTrial(d.mc, d.cfg, null);
+    out[i] = r.profit;
+    if(d.full){
+      a.spins+=r.spins; a.normalSpins+=r.normalSpins; a.firstHits+=r.firstHits;
+      a.totalHits+=r.totalHits; a.cash+=r.cash; a.hours+=r.hours; a.gained+=r.gained;
+      a.overtime+=r.overtime; if(r.overtime>0) a.nOver++;
+      if(r.endReason==='time') a.timeUp++; else if(r.endReason==='budget') a.budgetEnd++;
+      a.capHits+=r.capHits;
+      if(r.maxChain>a.maxChain) a.maxChain=r.maxChain;
+      if(r.gained>a.maxGained) a.maxGained=r.gained;
+      for(var k in r.enters) a.enters[k]=(a.enters[k]||0)+r.enters[k];
+    }
+  }
+  postMessage({id:d.id, profits:out, agg:a}, [out.buffer]);
+};`;
+}
+
+let POOL = null;
+function getPool(){
+  if(POOL) return POOL;
+  let workers = [];
+  try{
+    const n = Math.max(1, Math.min(MAX_WORKERS, (navigator.hardwareConcurrency || 2)));
+    const url = URL.createObjectURL(new Blob([buildWorkerSource()], {type:"application/javascript"}));
+    for(let i=0;i<n;i++) workers.push(new Worker(url));
+    URL.revokeObjectURL(url);
+  }catch(err){ workers = []; }        // 使えなければメインスレッドで回す
+  POOL = { workers, size: workers.length || 1, ok: workers.length > 0 };
+  return POOL;
+}
+
+// タスク（{mc,cfg,M,full}）の配列を並列に処理する
+function poolRun(tasks, onDone){
+  const pool = getPool();
+  if(!pool.ok){                       // フォールバック：メインスレッドで順に処理
+    return new Promise(resolve=>{
+      const results = [];
+      let i = 0;
+      const step = ()=>{
+        if(i >= tasks.length){ resolve(results); return; }
+        results[i] = runTasksLocally(tasks[i]);
+        i++; if(onDone) onDone(i, tasks.length);
+        setTimeout(step, 0);           // 画面に制御を返す
+      };
+      step();
+    });
+  }
+  return new Promise((resolve, reject)=>{
+    const results = new Array(tasks.length);
+    let next = 0, finished = 0;
+    const feed = (w)=>{
+      if(next >= tasks.length) return;
+      const id = next++;
+      w.onmessage = (e)=>{
+        results[e.data.id] = {profits: e.data.profits, agg: e.data.agg};
+        finished++; if(onDone) onDone(finished, tasks.length);
+        if(finished === tasks.length) resolve(results); else feed(w);
+      };
+      w.onerror = (err)=> reject(err);
+      w.postMessage(Object.assign({id}, tasks[id]));
+    };
+    pool.workers.forEach(feed);
+  });
+}
+
+// Workerが使えないときの同期版（Worker側と同じ集計をする）
+function runTasksLocally(t){
+  const out = new Float64Array(t.M);
+  const a = {spins:0,normalSpins:0,firstHits:0,totalHits:0,cash:0,hours:0,gained:0,
+             overtime:0,nOver:0,timeUp:0,budgetEnd:0,capHits:0,maxChain:0,maxGained:0,enters:{}};
+  for(let i=0;i<t.M;i++){
+    const r = runTrial(t.mc, t.cfg, null);
+    out[i] = r.profit;
+    if(t.full){
+      a.spins+=r.spins; a.normalSpins+=r.normalSpins; a.firstHits+=r.firstHits;
+      a.totalHits+=r.totalHits; a.cash+=r.cash; a.hours+=r.hours; a.gained+=r.gained;
+      a.overtime+=r.overtime; if(r.overtime>0) a.nOver++;
+      if(r.endReason==='time') a.timeUp++; else if(r.endReason==='budget') a.budgetEnd++;
+      a.capHits+=r.capHits;
+      if(r.maxChain>a.maxChain) a.maxChain=r.maxChain;
+      if(r.gained>a.maxGained) a.maxGained=r.gained;
+      for(const k in r.enters) a.enters[k]=(a.enters[k]||0)+r.enters[k];
+    }
+  }
+  return {profits: out, agg: a};
+}
+
+function mergeAgg(dst, src){
+  ["spins","normalSpins","firstHits","totalHits","cash","hours","gained",
+   "overtime","nOver","timeUp","budgetEnd","capHits"].forEach(k=> dst[k]+=src[k]);
+  if(src.maxChain > dst.maxChain) dst.maxChain = src.maxChain;
+  if(src.maxGained> dst.maxGained) dst.maxGained= src.maxGained;
+  for(const k in src.enters) dst.enters[k] = (dst.enters[k]||0) + src.enters[k];
+  return dst;
+}
+
+/* 指定した時間ぶんだけ試行を積み増す。
+   試行回数を固定すると端末性能で待ち時間が10倍変わるため、時間で区切る。 */
+async function sampleForMs(mc, cfg, budgetMs, onProgress){
+  const pool = getPool();
+  const W = pool.size;
+  const chunks = [], aggAll = {spins:0,normalSpins:0,firstHits:0,totalHits:0,cash:0,hours:0,
+    gained:0,overtime:0,nOver:0,timeUp:0,budgetEnd:0,capHits:0,maxChain:0,maxGained:0,enters:{}};
+  let total = 0, per = 400, t0 = performance.now();
+  while(true){
+    const elapsed = performance.now() - t0;
+    if(elapsed >= budgetMs || total >= 400000) break;
+    const tasks = [];
+    for(let i=0;i<W;i++) tasks.push({mc, cfg, M: per, full: true});
+    const res = await poolRun(tasks);
+    res.forEach(r=>{ chunks.push(r.profits); mergeAgg(aggAll, r.agg); total += r.profits.length; });
+    // 1周の実測から、残り時間で回せる件数に合わせる
+    const spent = performance.now() - t0;
+    const msPer = spent/total;
+    const left  = budgetMs - spent;
+    per = Math.max(200, Math.min(20000, Math.floor(left/msPer/W)));
+    if(onProgress) onProgress(Math.min(1, spent/budgetMs), total);
+  }
+  const profits = new Float64Array(total);
+  let o = 0; chunks.forEach(c=>{ profits.set(c, o); o += c.length; });
+  return {profits, agg: aggAll, trials: total};
 }
 
 function percentile(sorted, p){
@@ -1043,7 +1230,7 @@ function readConfig(){
     budget: parseFloat($("budget").value),
     hours: (mode==="hours" && v>0) ? v : UNLIMITED_HOURS,
     maxNormalSpins: (mode==="spins" && v>0) ? v : UNLIMITED_SPINS,
-    trials: parseInt($("trials").value,10)
+    precisionSec: parseFloat($("precision").value)
   };
 }
 
@@ -1062,7 +1249,7 @@ function updateHoursNote(){
     : `終了条件：${num(v,1)}時間か予算切れの早いほう。ただしRUSH／LT中に時間が来た場合は通常に戻るまで打ち切りません。終了時に残玉を換金します（通常${num(3600/SEC_NORMAL)}回転/時・電サポ${num(3600/SEC_DENSUP)}回転/時で消化）。`;
 }
 
-function run(){
+async function run(){
   const mc = currentMachine();
   const cfg = readConfig();
   if(!(cfg.lendRate>0) || !(cfg.exRate>0) || !(cfg.spins>0) || !(cfg.budget>0) || isNaN(cfg.stopInput)){
@@ -1073,6 +1260,20 @@ function run(){
     alert("交換率が貸玉レートを上回っています。入力を確認してください。");
     return;
   }
+
+  /* 時間予算の配分。1試行の重さは回転数や機種で10倍変わるので実測して決める。
+     ボーダー探索は6点＋5点の2段階で、各段の点は並列に走る。
+     よって所要時間は「1タスク分×段数」で、Worker数が点数を上回れば頭打ちになる。 */
+  // グラフ描画・較正・収支推移用の30本ぶんは固定で乗るので、その分を引いておく
+  const budgetMs = Math.max(300, cfg.precisionSec*1000 - 400);
+  const sampleMs = Math.round(budgetMs*0.6);
+  const searchMs = budgetMs - sampleMs;
+  const W = getPool().size;
+  const cal0 = performance.now();
+  for(let i=0;i<150;i++) runTrial(mc, cfg, null);
+  const tpt = Math.max(0.01, (performance.now()-cal0)/150);   // 1試行あたりms
+  const rounds = Math.ceil(6/W)*0.4 + Math.ceil(5/W);
+  const searchK = Math.max(1000, Math.min(20000, Math.round(searchMs/(rounds*tpt))));
 
   const theory = solveTheory(mc);
   const unit = cfg.unitYen, ulab = unitLabel(unit);
@@ -1092,7 +1293,8 @@ function run(){
   $("kBorderCash").innerHTML = num(borderCash,1) + `<small>回転/${ulab}</small>`;
   // 収支の上下2.5%を除いたトリム平均がゼロになる回転数
   const pct = Math.round(BORDER_BAND*100*10)/10;
-  const bTrim = trimmedBreakEven(mc, cfg, borderHold, BORDER_BAND);
+  setProgress(0.05, "ボーダーを探索中…");
+  const bTrim = await trimmedBreakEven(mc, cfg, borderHold, BORDER_BAND, searchK);
   $("kBorderTrim").innerHTML = bTrim
     ? num(bTrim,1) + `<small>回転/${ulab}</small>`
     : "算出できず";
@@ -1104,43 +1306,47 @@ function run(){
   $("kG").innerHTML = num(theory.G,0) + '<small>発</small>';
   $("kC").innerHTML = num(c,2) + '<small>玉</small>';
 
-  // 試行
-  const profits = [], histories = [];
-  let sSpins=0, sNormal=0, sFirst=0, sTotal=0, sCash=0, sTimeUp=0, sHours=0, sGained=0;
-  let sOver=0, nOver=0, maxChainAll=0, sCapHits=0, sBudgetEnd=0, maxTotalGained=0;
-  const sEnters = {};
-  for(let i=0;i<cfg.trials;i++){
-    const hist = i < 30 ? [{x:0,y:0}] : null;
-    const r = runTrial(mc, cfg, hist);
-    profits.push(r.profit);
-    if(hist) histories.push(hist);
-    sSpins += r.spins; sNormal += r.normalSpins;
-    sFirst += r.firstHits; sTotal += r.totalHits; sCash += r.cash; sHours += r.hours;
-    sGained += r.gained;
-    if(r.endReason === "time")   sTimeUp++;
-    if(r.endReason === "budget") sBudgetEnd++;
-    if(r.gained > maxTotalGained) maxTotalGained = r.gained;
-    sOver += r.overtime;
-    if(r.overtime > 0) nOver++;
-    if(r.maxChain > maxChainAll) maxChainAll = r.maxChain;
-    sCapHits += r.capHits;
-    Object.entries(r.enters).forEach(([k,v])=> sEnters[k] = (sEnters[k]||0)+v );
+  // 収支推移グラフ用の30本だけメインスレッドで回す（履歴はWorkerから返せないため）
+  const histories = [];
+  for(let i=0;i<30;i++){
+    const hist = [{x:0,y:0}];
+    runTrial(mc, cfg, hist);
+    histories.push(hist);
   }
-  const sorted = [...profits].sort((a,b)=>a-b);
-  const mean = profits.reduce((a,b)=>a+b,0)/profits.length;
+
+  // 本体の試行は時間で区切って並列に積む
+  const smp = await sampleForMs(mc, cfg, sampleMs,
+    (frac, n)=> setProgress(0.35 + frac*0.6, `試行中… ${num(n)}回`));
+  const profits = smp.profits, M = smp.trials, A = smp.agg;
+  const sSpins=A.spins, sNormal=A.normalSpins, sFirst=A.firstHits, sTotal=A.totalHits;
+  const sCash=A.cash, sHours=A.hours, sGained=A.gained, sOver=A.overtime, nOver=A.nOver;
+  const sTimeUp=A.timeUp, sBudgetEnd=A.budgetEnd, sCapHits=A.capHits;
+  const maxChainAll=A.maxChain, maxTotalGained=A.maxGained, sEnters=A.enters;
+
+  const sorted = Array.from(profits).sort((a,b)=>a-b);
+  let sum=0; for(let i=0;i<M;i++) sum += profits[i];
+  const mean = sum/M;
+  let vs=0; for(let i=0;i<M;i++){ const d=profits[i]-mean; vs += d*d; }
+  const sd = Math.sqrt(vs/M);
+  const se = sd/Math.sqrt(M);
   const median = percentile(sorted,0.5);
-  const winRate = profits.filter(p=>p>0).length/profits.length;
+  let wins=0; for(let i=0;i<M;i++) if(profits[i]>0) wins++;
+  const winRate = wins/M;
+  const trimMean = trimMeanOf(sorted, BORDER_BAND);
 
   $("tMean").textContent = yen(mean);   $("tMean").className = cls(mean);
+  $("tMeanR").textContent = `${num(M)}回の試行／±${num(Math.round(1.96*se))}円の精度（95%）`;
+  $("tTrim").textContent = yen(trimMean); $("tTrim").className = cls(trimMean);
   $("tMedian").textContent = yen(median); $("tMedian").className = cls(median);
   $("tWin").textContent = num(winRate*100,1)+"%"; $("tWin").className = "v";
+  $("tSd").textContent = yen(sd).replace("+",""); $("tSd").className = "v";
   $("tP5").textContent = yen(percentile(sorted,0.05));  $("tP5").className = cls(percentile(sorted,0.05));
   $("tP95").textContent = yen(percentile(sorted,0.95)); $("tP95").className = cls(percentile(sorted,0.95));
 
   // 理論値（時間無制限）と試行値の差の正体を明示する
   const realG = sFirst>0 ? sGained/sFirst : 0;
   const lossG = theory.G - realG;
-  const overPct  = nOver/cfg.trials*100;
+  const overPct  = nOver/M*100;
   const overUnit = v => `${num(v,0)}回転`;
   $("gapNote").innerHTML =
     `初当たり1回あたりの出玉は<b>実測 ${num(realG,0)}発</b>（理論 ${num(theory.G,0)}発、差 ${num(lossG,0)}発）。`
@@ -1153,15 +1359,15 @@ function run(){
   dt += `<tr><td>貸玉レート</td><td>${num(cfg.lendRate,2)}円/玉</td></tr>`;
   dt += `<tr><td>交換率</td><td>${num(cfg.exRate,3)}円/玉</td></tr>`;
   dt += `<tr><td>回転数の基準</td><td>${num(cfg.spins,2)}回転/${ulab}（${num(cfg.unitYen)}円）</td></tr>`;
-  dt += `<tr><td>総回転数</td><td>${num(sSpins/cfg.trials,0)}回転</td></tr>`;
-  dt += `<tr><td>通常時回転数</td><td>${num(sNormal/cfg.trials,0)}回転</td></tr>`;
-  dt += `<tr><td>初当たり回数</td><td>${num(sFirst/cfg.trials,2)}回</td></tr>`;
-  dt += `<tr><td>総大当たり回数</td><td>${num(sTotal/cfg.trials,2)}回</td></tr>`;
-  dt += `<tr><td>実際の投資額</td><td>${num(sCash/cfg.trials,0)}円</td></tr>`;
-  dt += `<tr><td>実際の遊技時間</td><td>${num(sHours/cfg.trials,1)}時間</td></tr>`;
-  dt += `<tr><td>${cfg.stopMode==="spins"?"回転数上限":"時間切れ"}で終了</td><td>${num(sTimeUp/cfg.trials*100,1)}%</td></tr>`;
-  dt += `<tr><td>予算切れで終了</td><td>${num(sBudgetEnd/cfg.trials*100,1)}%</td></tr>`;
-  dt += `<tr><td>出玉上限で終了</td><td>${num(sCapHits/cfg.trials*100,1)}%</td></tr>`;
+  dt += `<tr><td>総回転数</td><td>${num(sSpins/M,0)}回転</td></tr>`;
+  dt += `<tr><td>通常時回転数</td><td>${num(sNormal/M,0)}回転</td></tr>`;
+  dt += `<tr><td>初当たり回数</td><td>${num(sFirst/M,2)}回</td></tr>`;
+  dt += `<tr><td>総大当たり回数</td><td>${num(sTotal/M,2)}回</td></tr>`;
+  dt += `<tr><td>実際の投資額</td><td>${num(sCash/M,0)}円</td></tr>`;
+  dt += `<tr><td>実際の遊技時間</td><td>${num(sHours/M,1)}時間</td></tr>`;
+  dt += `<tr><td>${cfg.stopMode==="spins"?"回転数上限":"時間切れ"}で終了</td><td>${num(sTimeUp/M*100,1)}%</td></tr>`;
+  dt += `<tr><td>予算切れで終了</td><td>${num(sBudgetEnd/M*100,1)}%</td></tr>`;
+  dt += `<tr><td>出玉上限で終了</td><td>${num(sCapHits/M*100,1)}%</td></tr>`;
   dt += `<tr><td>上限到達後に連チャン消化</td><td>${num(overPct,1)}%（平均${overUnit(nOver>0 ? sOver/nOver : 0)}）</td></tr>`;
   dt += `<tr><td>初当たり1回あたり出玉（実測）</td><td>${num(realG,0)}発</td></tr>`;
   dt += `<tr><td>同（理論値）</td><td>${num(theory.G,0)}発</td></tr>`;
@@ -1170,32 +1376,111 @@ function run(){
   dt += `<tr><td>最大連チャン出玉（参考）</td><td>${num(maxChainAll,0)}発</td></tr>`;
   Object.entries(sEnters).forEach(([k,v])=>{
     if(k===mc.startMode) return;
-    dt += `<tr><td>${mc.modes[k].label} 突入回数</td><td>${num(v/cfg.trials,2)}回</td></tr>`;
+    dt += `<tr><td>${mc.modes[k].label} 突入回数</td><td>${num(v/M,2)}回</td></tr>`;
   });
   $("tDetail").innerHTML = dt;
 
-  drawHist(profits, mean, median);
+  lastHist = {sorted, mean, median, trimMean, M};
+  drawHist();
   drawRun(histories);
-  drawCurve(mc, cfg, theory, mean, sNormal/cfg.trials);
+  drawCurve(mc, cfg, theory, mean, sNormal/M);
 
   $("result").classList.remove("hidden");
   $("result").scrollIntoView({behavior:"smooth", block:"start"});
 }
 
-// 収支の分布。予算切れの山が左端に立ち、右に長い裾を引く形になる
-function drawHist(profits, mean, median){
-  const lo = Math.min(...profits), hi = Math.max(...profits);
-  const BINS = 26;
-  const w = (hi-lo)/BINS || 1;
-  const counts = new Array(BINS).fill(0);
-  profits.forEach(p=>{
-    let i = Math.floor((p-lo)/w);
-    if(i >= BINS) i = BINS-1;
-    if(i < 0) i = 0;
-    counts[i]++;
-  });
+/* 収支の分布。予算切れの山が左端に立ち、右に長い裾を引く。
+   FD則だと数百ビンになって描画できないので、切りのいい額から選ぶ。   */
+let lastHist = null;
+const BIN_CANDIDATES = [100,200,500,1000,2000,2500,5000,10000,20000,25000,50000,100000];
+const HIST_TARGET_BINS = 30;
+const HIST_CLIP = 0.005;   // 表示範囲は p0.5〜p99.5。外れ値は端のビンにまとめる
+
+// 縦の基準線を引く（Chart.jsの注釈プラグインを使わず自前で描く）
+const vlinePlugin = {
+  id:"vlines",
+  afterDatasetsDraw(chart){
+    const conf = chart.$vlines;
+    if(!conf) return;
+    const {ctx, chartArea:{left,right,top,bottom}} = chart;
+    ctx.save();
+    conf.lines.forEach(L=>{
+      const t = (L.value - conf.lo) / (conf.w * conf.bins);
+      if(t < 0 || t > 1) return;
+      const x = left + (right-left)*t;
+      ctx.strokeStyle = L.color; ctx.lineWidth = 1.5; ctx.setLineDash(L.dash||[5,4]);
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = L.color; ctx.font = "10px sans-serif";
+      ctx.textAlign = x > (left+right)/2 ? "right" : "left";
+      ctx.fillText(L.label, x + (x > (left+right)/2 ? -4 : 4), top + 10 + (L.row||0)*12);
+    });
+    ctx.restore();
+  }
+};
+Chart.register(vlinePlugin);
+
+/* 縦軸を2番目の帯に合わせたとき、振り切れた帯の実際の値を頭に出す。
+   そうしないと「何%あるのか」が読めなくなるため。 */
+const clipLabelPlugin = {
+  id:"cliplabel",
+  afterDatasetsDraw(chart){
+    const list = chart.$clipped;
+    if(!list || !list.length) return;
+    const meta = chart.getDatasetMeta(0);
+    const {ctx, chartArea:{top}} = chart;
+    ctx.save();
+    ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    list.forEach(({index, text})=>{
+      const bar = meta.data[index];
+      if(!bar) return;
+      const w = ctx.measureText(text).width + 8;
+      ctx.fillStyle = "rgba(18,21,28,0.9)";
+      ctx.fillRect(bar.x - w/2, top + 1, w, 14);
+      ctx.fillStyle = "#e8ecf4";
+      ctx.fillText(text, bar.x, top + 8);
+    });
+    ctx.restore();
+  }
+};
+Chart.register(clipLabelPlugin);
+
+function drawHist(){
+  if(!lastHist) return;
+  const {sorted, mean, median, trimMean, M} = lastHist;
+  // 極端な外れ値を含めるとレンジが数十万円になり中央が潰れるので範囲を切る
+  const qlo = sorted[Math.floor((M-1)*HIST_CLIP)];
+  const qhi = sorted[Math.ceil((M-1)*(1-HIST_CLIP))];
+  const sel = $("binW").value;
+  let w;
+  if(sel === "auto"){
+    const want = Math.max(1,(qhi-qlo)/HIST_TARGET_BINS);
+    w = BIN_CANDIDATES.reduce((a,b)=> Math.abs(b-want) < Math.abs(a-want) ? b : a);
+  }else{
+    w = parseFloat(sel);
+  }
+  const lo   = Math.floor(qlo/w)*w;
+  const bins = Math.max(1, Math.min(200, Math.ceil((qhi-lo)/w)));
+  const counts = new Array(bins).fill(0);
+  for(let i=0;i<M;i++){
+    let b = Math.floor((sorted[i]-lo)/w);
+    if(b < 0) b = 0;
+    if(b >= bins) b = bins-1;
+    counts[b]++;
+  }
   const centers = counts.map((_,i)=> lo + w*(i+0.5));
-  const man = v => (v/10000).toFixed(1)+"万";
+  const pcts = counts.map(c=> c/M*100);
+  const man = v => Math.abs(v) >= 10000 ? (v/10000).toFixed(1)+"万" : Math.round(v/1000)+"千";
+
+  /* 1本が突出していると他の帯が潰れて読めない。
+     「2番目の帯に合わせる」を選ぶと縦軸をそこで止め、突出した帯は振り切らせる。 */
+  const desc = [...pcts].sort((a,b)=>b-a);
+  const second = desc.length > 1 ? desc[1] : 0;
+  const useSecond = $("yScale").value === "second" && second > 0 && desc[0] > second*1.2;
+  const yMax = useSecond ? second*1.15 : undefined;
+  const clipped = useSecond
+    ? pcts.map((v,i)=> v > yMax ? {index:i, text:num(v,1)+"%"} : null).filter(Boolean)
+    : [];
 
   if(chartHist) chartHist.destroy();
   chartHist = new Chart($("chartHist"), {
@@ -1203,7 +1488,7 @@ function drawHist(profits, mean, median){
     data:{
       labels: centers.map(man),
       datasets:[{
-        data: counts.map(c=> c/profits.length*100),
+        data: pcts,
         backgroundColor: centers.map(v=> v>=0 ? "rgba(55,214,122,0.75)" : "rgba(255,92,114,0.75)"),
         borderWidth:0, barPercentage:1, categoryPercentage:1
       }]
@@ -1213,24 +1498,43 @@ function drawHist(profits, mean, median){
       plugins:{
         legend:{display:false},
         tooltip:{callbacks:{
-          title: it => `${yen(lo+w*it[0].dataIndex)} 〜 ${yen(lo+w*(it[0].dataIndex+1))}`,
-          label: it => `${num(it.parsed.y,1)}%（${counts[it.dataIndex]}回）`
+          title: it => {
+            const i = it[0].dataIndex;
+            if(i === 0)        return `${yen(lo+w)} 以下`;
+            if(i === bins-1)   return `${yen(lo+w*(bins-1))} 以上`;
+            return `${yen(lo+w*i)} 〜 ${yen(lo+w*(i+1))}`;
+          },
+          label: it => `${num(it.parsed.y,2)}%（${num(counts[it.dataIndex])}回）`
         }}
       },
       scales:{
         x:{title:{display:true,text:"収支（円）",color:"#98a3ba",font:{size:10}},
            ticks:{color:"#98a3ba",font:{size:10},maxTicksLimit:7,autoSkip:true},
            grid:{display:false}},
-        y:{title:{display:true,text:"割合（%）",color:"#98a3ba",font:{size:10}},
-           ticks:{color:"#98a3ba",font:{size:10}}, grid:{color:"#2e364a"}}
+        y:{title:{display:true,text:"出現確率（%）",color:"#98a3ba",font:{size:10}},
+           max:yMax, ticks:{color:"#98a3ba",font:{size:10}}, grid:{color:"#2e364a"}}
       }
     }
   });
+  chartHist.$vlines = { lo, w, bins, lines:[
+    {value:0,        color:"#98a3ba", label:"収支0",   dash:[3,3], row:0},
+    {value:mean,     color:"#4da3ff", label:"平均",     row:1},
+    {value:trimMean, color:"#f5a524", label:"トリム平均", row:2}
+  ]};
+  chartHist.$clipped = clipped;
+  chartHist.update();
 
-  const worst = counts[0]/profits.length*100;
+  const outHi = sorted.filter(v=> v > lo + w*bins).length/M*100;
   $("histNote").innerHTML =
-    `緑が勝ち、赤が負け。平均 <b>${yen(mean)}</b>／中央値 <b>${yen(median)}</b>。`
-    + `最も左の帯（${yen(lo)}前後）に全体の${num(worst,1)}%が集まっています。`;
+    `緑が勝ち、赤が負け。刻み幅 <b>${yen(w).replace("+","")}</b>／${bins}本。`
+    + `縦線は左から 収支0（灰）・平均（青）・トリム平均（橙）。<br>`
+    + `最も高い帯に全体の${num(desc[0],1)}%が集まっています。`
+    + (outHi > 0 ? `右端の帯には ${yen(lo+w*(bins-1))} 以上の${num(outHi,2)}%をまとめています。` : "")
+    + (useSecond
+        ? `<br>縦軸を2番目の帯（${num(second,2)}%）に合わせているため、突出した帯は振り切れています。実際の値は帯の頭に表示しています。`
+        : (desc[0] > second*3
+            ? `<br>1本が突出して他が読めない場合は、上の「縦軸の高さ」を<b>2番目の帯に合わせる</b>にしてください。`
+            : ""));
 }
 
 function drawRun(histories){
@@ -1322,14 +1626,26 @@ $("stopMode").addEventListener("change", ()=>{
   $("stopValue").value = $("stopMode").value === "spins" ? 2000 : 8;
   updateHoursNote();
 });
-$("run").addEventListener("click", ()=>{
+// 刻み幅・縦軸の変更は再計算せず、手元のサンプルを描き直すだけ
+$("binW").addEventListener("change", drawHist);
+$("yScale").addEventListener("change", drawHist);
+
+function setProgress(frac, text){
+  $("prog").classList.remove("hidden");
+  $("progFill").style.width = Math.round(Math.max(0,Math.min(1,frac))*100)+"%";
+  $("progTxt").textContent = text || "";
+}
+function hideProgress(){ $("prog").classList.add("hidden"); $("progFill").style.width="0"; }
+
+$("run").addEventListener("click", async ()=>{
   const b = $("run");
   b.disabled = true; b.textContent = "計算中…";
-  setTimeout(()=>{
-    try{ run(); }
-    catch(err){ alert("計算エラー: "+err.message); console.error(err); }
-    b.disabled = false; b.textContent = "計算する";
-  }, 30);
+  setProgress(0.02, "準備中…");
+  await new Promise(r=>setTimeout(r,20));   // 「計算中…」を先に描かせる
+  try{ await run(); }
+  catch(err){ alert("計算エラー: "+err.message); console.error(err); }
+  b.disabled = false; b.textContent = "計算する";
+  hideProgress();
 });
 
 function renderVersion(){
