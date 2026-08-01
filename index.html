@@ -194,6 +194,7 @@ details .inner{margin-top:10px;}
       <option value="1">高速（約1秒）</option>
       <option value="2" selected>標準（約2秒）</option>
       <option value="5">高精度（約5秒）</option>
+      <option value="10">最高精度（約10秒）</option>
     </select>
   </div>
   <div class="note" id="hoursNote"></div>
@@ -377,9 +378,12 @@ details .inner{margin-top:10px;}
    （ver.1.16.1以降に適用。それ以前の機種追加はYを上げている）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.18.0";
+const VERSION = "ver.1.19.0";
 
 const CHANGELOG = [
+  { v:"ver.1.19.0", date:"2026-07-28", items:[
+    "精度の選択肢に「最高精度（約10秒）」を追加"
+  ]},
   { v:"ver.1.18.0", date:"2026-07-28", items:[
     "機種一覧をあいうえお順（読み仮名基準）に並び替え",
     "機種名の検索ボックスを追加。ひらがな入力でもカタカナの読み仮名にマッチする"
