@@ -121,8 +121,12 @@ details .inner{margin-top:10px;}
 <div class="card">
   <h2>機種</h2>
   <div class="field">
+    <input id="machineSearch" type="search" placeholder="機種名で検索" autocomplete="off">
+  </div>
+  <div class="field">
     <select id="machine"></select>
   </div>
+  <div class="note" id="machineSearchNote"></div>
   <div class="spec-note" id="specNote"></div>
   <details>
     <summary>スペック詳細</summary>
@@ -373,9 +377,13 @@ details .inner{margin-top:10px;}
    （ver.1.16.1以降に適用。それ以前の機種追加はYを上げている）
    更新時は VERSION と CHANGELOG の両方を必ず更新する。
    ========================================================= */
-const VERSION = "ver.1.17.1";
+const VERSION = "ver.1.18.0";
 
 const CHANGELOG = [
+  { v:"ver.1.18.0", date:"2026-07-28", items:[
+    "機種一覧をあいうえお順（読み仮名基準）に並び替え",
+    "機種名の検索ボックスを追加。ひらがな入力でもカタカナの読み仮名にマッチする"
+  ]},
   { v:"ver.1.17.1", date:"2026-07-28", items:[
     "【サンプル】CHARGE＋LT搭載機を削除（実機データが揃ったため見本役を終了）"
   ]},
@@ -511,6 +519,9 @@ const CHANGELOG = [
      payoutRate    出玉増減率。省略すると全機種共通の DEFAULT_PAYOUT_RATE
      ballCap       セッション合計の出玉上限。到達したら打ち止め（null＝なし）
      yutime        遊タイム。使うときは startMode に limit / onLimit を設定
+     kana          読み仮名（カタカナ）。機種一覧の並び替え・検索に使う。
+                   新機種を追加したら必ず設定する
+     alias         通称・略称（「リコリコ」「SAO」など）。検索にのみ使う。省略可
    ========================================================= */
 
 // 電サポ中の出玉増減。全機種に適用する（機種側で payoutRate を書けば上書き）
@@ -523,6 +534,7 @@ const MACHINES = [
 {
   id:"rezero2_129",
   name:"P Re:ゼロから始める異世界生活 season2 129ver.",
+  kana:"リゼロカラハジメルイセカイセイカツ",   // 「Re:」を「リ」と読む公式表記に準拠
   note:"通常時1/129 ／ 右打ち中実質1/99.9",
   lendYen:500, lendBalls:125,
   ballCap:100000,
@@ -559,6 +571,7 @@ const MACHINES = [
 {
   id:"tokyoghoul_w",
   name:"e東京喰種W",
+  kana:"トウキョウグール",
   note:"通常時1/199 ／ RUSH中1/95.3・130回転",
   lendYen:500, lendBalls:125,
   ballCap:100000,
@@ -591,6 +604,8 @@ const MACHINES = [
 {
   id:"lycoreco_m3",
   name:"eリコリス・リコイルM3",
+  kana:"リコリスリコイル",
+  alias:"リコリコ",   // 通称でも検索できるように
   note:"通常時1/259.7 ／ 右打ち中1/97.1・ST132回転 ／ モードA・Bの2段階＋LT",
   lendYen:500, lendBalls:125,
   ballCap:100000,
@@ -640,6 +655,8 @@ const MACHINES = [
 {
   id:"sao_yozora",
   name:"eソードアート・オンライン アリシゼーション 夜空",
+  kana:"ソードアートオンラインアリシゼーションヨゾラ",
+  alias:"SAO",   // 通称でも検索できるように
   note:"通常時1/199 ／ 右打ち中1/51.6 ／ SWORD RUSH(ST53)→War of Underworld(ST70)→LT",
   lendYen:500, lendBalls:125,
   ballCap:100000,
@@ -1042,15 +1059,44 @@ function percentile(sorted, p){
 /* ============ 画面 ============ */
 let chartRun=null, chartCurve=null, chartHist=null;
 
-function initMachines(){
+// 読み仮名（なければ表示名）のあいうえお順。ひらがな検索にも対応するため
+// 検索側・データ側ともカタカナに正規化してから比較する
+const machinesByKana = () => [...MACHINES].sort((a,b)=>
+  (a.kana||a.name).localeCompare(b.kana||b.name, "ja"));
+
+const toKatakana = s => (s||"").replace(/[ぁ-ゖ]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60));
+const normalizeSearch = s => toKatakana(s).toLowerCase();
+
+function matchesMachine(m, q){
+  if(!q) return true;
+  return normalizeSearch(m.name+" "+(m.kana||"")+" "+(m.alias||"")).includes(q);
+}
+
+// 検索語で絞り込んだ機種一覧でセレクトを作り直す。0件のときはセレクトを空にしない
+function rebuildMachineOptions(){
   const sel = $("machine");
-  MACHINES.forEach(m=>{
+  const q = normalizeSearch($("machineSearch").value.trim());
+  const list = machinesByKana().filter(m=>matchesMachine(m,q));
+  if(list.length===0){
+    $("machineSearchNote").innerHTML = `<span class="minus">該当する機種がありません。</span>`;
+    return;
+  }
+  const prevId = sel.value;
+  sel.innerHTML = "";
+  list.forEach(m=>{
     const o = document.createElement("option");
     o.value = m.id; o.textContent = m.name;
     sel.appendChild(o);
   });
-  sel.addEventListener("change", onMachineChange);
+  sel.value = list.some(m=>m.id===prevId) ? prevId : list[0].id;
+  $("machineSearchNote").textContent = q ? `${list.length}件ヒット` : "";
   onMachineChange();
+}
+
+function initMachines(){
+  rebuildMachineOptions();
+  $("machine").addEventListener("change", onMachineChange);
+  $("machineSearch").addEventListener("input", rebuildMachineOptions);
 }
 
 function currentMachine(){
